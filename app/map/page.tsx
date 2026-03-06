@@ -1,6 +1,5 @@
 import MapView from "@/components/map/MapView";
 import Navbar2 from "@/components/Navbar2";
-import Footer from "@/components/Footer";
 
 export default function MapPage() {
   return (
@@ -9,7 +8,6 @@ export default function MapPage() {
       <main>
         <MapView />
       </main>
-      <Footer />
     </>
   );
 }
