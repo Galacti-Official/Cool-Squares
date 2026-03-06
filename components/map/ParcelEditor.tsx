@@ -8,6 +8,33 @@ interface SelectedArea {
   areaSqKm: number;
 }
 
+interface SatelliteTile {
+  z: number;
+  x: number;
+  y: number;
+  img: HTMLImageElement;
+}
+
+function lngToTileX(lng: number, z: number): number {
+  const n = 2 ** z;
+  return Math.floor(((lng + 180) / 360) * n);
+}
+
+function latToTileY(lat: number, z: number): number {
+  const n = 2 ** z;
+  const latRad = (lat * Math.PI) / 180;
+  return Math.floor((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2 * n);
+}
+
+function tileXToLng(x: number, z: number): number {
+  return (x / (2 ** z)) * 360 - 180;
+}
+
+function tileYToLat(y: number, z: number): number {
+  const n = Math.PI - (2 * Math.PI * y) / (2 ** z);
+  return (180 / Math.PI) * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
+}
+
 function makeProjection(
   points: [number, number][],
   canvasW: number,
@@ -395,7 +422,10 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
   const [isDragOver, setIsDragOver] = useState(false);
   const [sidebarSearch, setSidebarSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const [editorMapStyle, setEditorMapStyle] = useState<"map" | "satellite">("map");
   const [zoomDisplay, setZoomDisplay] = useState(100);
+  const [satTilesVersion, setSatTilesVersion] = useState(0);
+  const [satImageStatus, setSatImageStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
 
   const elementsRef = useRef(elements);
   const selectedIdsRef = useRef(selectedIds);
@@ -403,6 +433,7 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
   const canvasSize = useRef({ w: 800, h: 600 });
   const pixelsPerMetreRef = useRef(1);
   const draggingCatalogItem = useRef<any>(null);
+  const satelliteTilesRef = useRef<SatelliteTile[]>([]);
 
   const vp = useRef<Viewport>({ x: 0, y: 0, zoom: 1, angle: 0 });
   const vpInitialised = useRef(false);
@@ -420,6 +451,61 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
   useEffect(() => { elementsRef.current = elements; }, [elements]);
   useEffect(() => { selectedIdsRef.current = selectedIds; }, [selectedIds]);
   useEffect(() => { hoveredIdRef.current = hoveredId; }, [hoveredId]);
+
+  useEffect(() => {
+    if (editorMapStyle !== "satellite") {
+      setSatImageStatus("idle");
+      return;
+    }
+    setSatImageStatus("loading");
+    satelliteTilesRef.current = [];
+    setSatTilesVersion((v) => v + 1);
+
+    const { north, south, east, west } = area.bounds;
+    const maxTiles = 36;
+    let zoom = 18;
+    for (let z = 18; z >= 12; z--) {
+      const xMin = lngToTileX(west, z);
+      const xMax = lngToTileX(east, z);
+      const yMin = latToTileY(north, z);
+      const yMax = latToTileY(south, z);
+      const count = (Math.abs(xMax - xMin) + 1) * (Math.abs(yMax - yMin) + 1);
+      if (count <= maxTiles) {
+        zoom = z;
+        break;
+      }
+    }
+
+    const x0 = Math.min(lngToTileX(west, zoom), lngToTileX(east, zoom));
+    const x1 = Math.max(lngToTileX(west, zoom), lngToTileX(east, zoom));
+    const y0 = Math.min(latToTileY(north, zoom), latToTileY(south, zoom));
+    const y1 = Math.max(latToTileY(north, zoom), latToTileY(south, zoom));
+
+    let cancelled = false;
+    const loads: Promise<SatelliteTile | null>[] = [];
+    for (let x = x0; x <= x1; x++) {
+      for (let y = y0; y <= y1; y++) {
+        loads.push(new Promise((resolve) => {
+          const img = new Image();
+          img.onload = () => resolve({ z: zoom, x, y, img });
+          img.onerror = () => resolve(null);
+          img.src = `https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${zoom}/${y}/${x}`;
+        }));
+      }
+    }
+
+    Promise.all(loads).then((tiles) => {
+      if (cancelled) return;
+      const loaded = tiles.filter((t): t is SatelliteTile => t !== null);
+      satelliteTilesRef.current = loaded;
+      setSatImageStatus(loaded.length > 0 ? "ready" : "error");
+      setSatTilesVersion((v) => v + 1);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [editorMapStyle, area.bounds.north, area.bounds.south, area.bounds.east, area.bounds.west]);
 
   function screenToWorld(sx: number, sy: number): [number, number] {
     const { x, y, zoom, angle } = vp.current;
@@ -476,14 +562,25 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
     function render() {
       const { w, h } = canvasSize.current;
       const { x: vpX, y: vpY, zoom, angle } = vp.current;
+      const isSatellite = editorMapStyle === "satellite";
+      const hasSatelliteTiles = isSatellite && satelliteTilesRef.current.length > 0;
+      const bgFill = isSatellite ? "#5d6757" : "#d6d7c3";
+      const bgGrid = isSatellite ? "#ffffff14" : "#c8c9b544";
+      const outsideFill = isSatellite ? "#3f463bcc" : "#d6d7c3cc";
+      const parcelFill = isSatellite ? "#6f7d68" : "#F4F5E0";
+      const parcelFineGrid = isSatellite ? "#ffffff10" : "#2e3a1f0d";
+      const parcelAccentGrid = isSatellite ? "#ffffff1f" : "#2e3a1f18";
+      const parcelBorder = isSatellite ? "#e8efda" : "#2e3a1f";
+      const labelColor = isSatellite ? "#f1f6e0bb" : "#2e3a1f55";
+      const scaleColor = isSatellite ? "#f1f6e0d0" : "#2e3a1f88";
 
       ctx.clearRect(0, 0, w, h);
 
-      ctx.fillStyle = "#d6d7c3";
+      ctx.fillStyle = bgFill;
       ctx.fillRect(0, 0, w, h);
 
       const gridStep = 40;
-      ctx.strokeStyle = "#c8c9b544";
+      ctx.strokeStyle = bgGrid;
       ctx.lineWidth = 0.5;
       const gox = ((vpX % gridStep) + gridStep) % gridStep;
       const goy = ((vpY % gridStep) + gridStep) % gridStep;
@@ -508,15 +605,40 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
       ctx.moveTo(worldPts[0][0], worldPts[0][1]);
       worldPts.forEach(([px, py]) => ctx.lineTo(px, py));
       ctx.closePath();
-      ctx.fillStyle = "#d6d7c3cc";
+      ctx.fillStyle = outsideFill;
       ctx.fill("evenodd");
 
       ctx.beginPath();
       ctx.moveTo(worldPts[0][0], worldPts[0][1]);
       worldPts.forEach(([px, py]) => ctx.lineTo(px, py));
       ctx.closePath();
-      ctx.fillStyle = "#F4F5E0";
+      ctx.fillStyle = parcelFill;
       ctx.fill();
+
+      if (hasSatelliteTiles) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(worldPts[0][0], worldPts[0][1]);
+        worldPts.forEach(([px, py]) => ctx.lineTo(px, py));
+        ctx.closePath();
+        ctx.clip();
+        ctx.globalAlpha = 0.95;
+        satelliteTilesRef.current.forEach((tile) => {
+          const west = tileXToLng(tile.x, tile.z);
+          const east = tileXToLng(tile.x + 1, tile.z);
+          const north = tileYToLat(tile.y, tile.z);
+          const south = tileYToLat(tile.y + 1, tile.z);
+          const nw = project([north, west]);
+          const se = project([south, east]);
+          const x = Math.min(nw[0], se[0]);
+          const y = Math.min(nw[1], se[1]);
+          const w = Math.abs(se[0] - nw[0]);
+          const h = Math.abs(se[1] - nw[1]);
+          ctx.drawImage(tile.img, x, y, w, h);
+        });
+        ctx.globalAlpha = 1;
+        ctx.restore();
+      }
 
       ctx.save();
       ctx.beginPath();
@@ -531,7 +653,7 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
       const wy0 = Math.floor(Math.min(...ys2) / gridW) * gridW;
       const wx1 = Math.ceil(Math.max(...xs2) / gridW) * gridW;
       const wy1 = Math.ceil(Math.max(...ys2) / gridW) * gridW;
-      ctx.strokeStyle = "#2e3a1f0d";
+      ctx.strokeStyle = parcelFineGrid;
       ctx.lineWidth = 0.5 / zoom;
       for (let gx = wx0; gx <= wx1; gx += gridW) {
         ctx.beginPath(); ctx.moveTo(gx, wy0); ctx.lineTo(gx, wy1); ctx.stroke();
@@ -540,7 +662,7 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
         ctx.beginPath(); ctx.moveTo(wx0, gy); ctx.lineTo(wx1, gy); ctx.stroke();
       }
 
-      ctx.strokeStyle = "#2e3a1f18";
+      ctx.strokeStyle = parcelAccentGrid;
       ctx.lineWidth = 1 / zoom;
       for (let gx = wx0; gx <= wx1; gx += gridW * 5) {
         ctx.beginPath(); ctx.moveTo(gx, wy0); ctx.lineTo(gx, wy1); ctx.stroke();
@@ -553,16 +675,34 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
       ctx.moveTo(worldPts[0][0], worldPts[0][1]);
       worldPts.forEach(([px, py]) => ctx.lineTo(px, py));
       ctx.closePath();
-      ctx.strokeStyle = "#2e3a1f";
+      ctx.strokeStyle = parcelBorder;
       ctx.lineWidth = 2 / zoom;
       ctx.setLineDash([]);
       ctx.stroke();
+
+      if (isSatellite && !hasSatelliteTiles) {
+        const cx = worldPts.reduce((sum, p) => sum + p[0], 0) / worldPts.length;
+        const cy = worldPts.reduce((sum, p) => sum + p[1], 0) / worldPts.length;
+        ctx.save();
+        ctx.fillStyle = "#f1f6e0dd";
+        ctx.font = `${12 / zoom}px sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(
+          satImageStatus === "error"
+            ? "Satellite imagery unavailable for this view"
+            : "Loading satellite imagery…",
+          cx,
+          cy
+        );
+        ctx.restore();
+      }
 
       ctx.save();
       const lx = worldPts[0][0] + 8 / zoom;
       const ly = worldPts[0][1] + 8 / zoom;
       ctx.font = `${11 / zoom}px sans-serif`;
-      ctx.fillStyle = "#2e3a1f55";
+      ctx.fillStyle = labelColor;
       ctx.textAlign = "left";
       ctx.textBaseline = "top";
       ctx.fillText(
@@ -582,7 +722,7 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
         const barPx = barMetres * pixelsPerMetre;
         const bx = Math.min(...xs2) + 10 / zoom;
         const by = Math.max(...ys2) - 20 / zoom;
-        ctx.strokeStyle = "#2e3a1f88";
+        ctx.strokeStyle = scaleColor;
         ctx.lineWidth = 2 / zoom;
         ctx.beginPath();
         ctx.moveTo(bx, by); ctx.lineTo(bx + barPx, by);
@@ -590,7 +730,7 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
         ctx.moveTo(bx + barPx, by - 4 / zoom); ctx.lineTo(bx + barPx, by + 4 / zoom);
         ctx.stroke();
         ctx.font = `${10 / zoom}px sans-serif`;
-        ctx.fillStyle = "#2e3a1f88";
+        ctx.fillStyle = scaleColor;
         ctx.textAlign = "center";
         ctx.textBaseline = "bottom";
         ctx.fillText(barMetres >= 1000 ? `${barMetres/1000}km` : `${barMetres}m`, bx + barPx / 2, by - 5 / zoom);
@@ -612,7 +752,7 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
 
     render();
     return () => cancelAnimationFrame(raf);
-  }, [area]);
+  }, [area, editorMapStyle, satTilesVersion, satImageStatus]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -1019,6 +1159,41 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
           <button title="Rotate viewport +15° ( ] )" onClick={() => rotateViewport(15 * Math.PI / 180)}
             style={{ height: "100%", padding: "0 12px", background: "none", border: "none", cursor: "pointer", color: "#2e3a1f88", fontSize: 14, fontFamily: "inherit" }}>
             ↻
+          </button>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", height: "100%", borderRight: "1.5px solid #2e3a1f22", padding: "0 8px", gap: 6 }}>
+          <button
+            onClick={() => setEditorMapStyle("map")}
+            style={{
+              padding: "4px 10px",
+              borderRadius: 999,
+              border: "1.5px solid #2e3a1f33",
+              background: editorMapStyle === "map" ? "#2e3a1f" : "transparent",
+              color: editorMapStyle === "map" ? "#F4F5E0" : "#2e3a1f88",
+              fontSize: 11,
+              fontFamily: "inherit",
+              cursor: "pointer",
+              letterSpacing: "0.04em",
+            }}
+          >
+            Map
+          </button>
+          <button
+            onClick={() => setEditorMapStyle("satellite")}
+            style={{
+              padding: "4px 10px",
+              borderRadius: 999,
+              border: "1.5px solid #2e3a1f33",
+              background: editorMapStyle === "satellite" ? "#2e3a1f" : "transparent",
+              color: editorMapStyle === "satellite" ? "#F4F5E0" : "#2e3a1f88",
+              fontSize: 11,
+              fontFamily: "inherit",
+              cursor: "pointer",
+              letterSpacing: "0.04em",
+            }}
+          >
+            Satellite
           </button>
         </div>
 

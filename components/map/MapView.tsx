@@ -294,11 +294,16 @@ function ResultsPage({
 
 
 function MapView({ onAreaSelected }: { onAreaSelected: (area: SelectedArea) => void }) {
+  const LIGHT_TILES = "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
+  const SATELLITE_TILES = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
+
   const mapRef = useRef<HTMLDivElement>(null);
   const leafletMapRef = useRef<any>(null);
   const czGeoJsonRef = useRef<any>(null);
+  const bgLayerRef = useRef<any>(null);
   const clipLayerRef = useRef<any>(null);
   const [mapReady, setMapReady] = useState(false);
+  const [mapStyle, setMapStyle] = useState<"light" | "satellite">("light");
   const [mode, setMode] = useState<Mode>("idle");
   const [pointCount, setPointCount] = useState(0);
   const [invalidMsg, setInvalidMsg] = useState<string | null>(null);
@@ -355,12 +360,13 @@ function MapView({ onAreaSelected }: { onAreaSelected: (area: SelectedArea) => v
       map.createPane("bgPane").style.zIndex = "199";
       map.createPane("czPane").style.zIndex = "200";
 
-      L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+      const bgTileLayer = L.tileLayer(LIGHT_TILES, {
         attribution: "© OpenStreetMap contributors © CARTO",
         subdomains: "abcd", maxZoom: 20, pane: "bgPane", opacity: 0.15,
       }).addTo(map);
+      bgLayerRef.current = bgTileLayer;
 
-      const czTileLayer = L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+      const czTileLayer = L.tileLayer(LIGHT_TILES, {
         attribution: "", subdomains: "abcd", maxZoom: 20, pane: "czPane",
       }).addTo(map);
       clipLayerRef.current = czTileLayer;
@@ -448,6 +454,18 @@ function MapView({ onAreaSelected }: { onAreaSelected: (area: SelectedArea) => v
       setMapReady(true);
     }
   }, []);
+
+  useEffect(() => {
+    const bgLayer = bgLayerRef.current;
+    const clipLayer = clipLayerRef.current;
+    if (!bgLayer || !clipLayer) return;
+
+    const isSatellite = mapStyle === "satellite";
+    const tileUrl = isSatellite ? SATELLITE_TILES : LIGHT_TILES;
+    bgLayer.setUrl(tileUrl);
+    clipLayer.setUrl(tileUrl);
+    bgLayer.setOpacity(isSatellite ? 0.28 : 0.15);
+  }, [mapStyle]);
 
   function flashInvalid(msg: string) {
     setInvalidMsg(msg);
@@ -542,6 +560,23 @@ function MapView({ onAreaSelected }: { onAreaSelected: (area: SelectedArea) => v
   return (
     <div className="relative w-full" style={{ height: "calc(100vh - 64px - 57px)" }}>
       <div ref={mapRef} className="absolute inset-0" />
+
+      {mapReady && (
+        <div className="absolute top-5 left-5 z-[1000] bg-bg/95 backdrop-blur-md border border-btn/40 rounded-2xl p-1.5 flex items-center gap-1 shadow-lg">
+          <button
+            onClick={() => setMapStyle("light")}
+            className={`px-3 py-1.5 rounded-xl text-xs tracking-wide transition-all ${mapStyle === "light" ? "bg-text text-bg" : "text-text-mid hover:bg-bg/70"}`}
+          >
+            Map
+          </button>
+          <button
+            onClick={() => setMapStyle("satellite")}
+            className={`px-3 py-1.5 rounded-xl text-xs tracking-wide transition-all ${mapStyle === "satellite" ? "bg-text text-bg" : "text-text-mid hover:bg-bg/70"}`}
+          >
+            Satellite
+          </button>
+        </div>
+      )}
 
       {mapReady && (
         <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-[1000] flex items-center gap-2">
