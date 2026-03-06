@@ -13,27 +13,18 @@ export default function Navbar() {
   const [scrolled, setScrolled] = useState(false);
 
   useEffect(() => {
-<<<<<<< Updated upstream
-    const onScroll = () => setScrolled(window.scrollY > 0);
-=======
     const onScroll = () => {
       setScrolled(window.scrollY > 0);
     };
->>>>>>> Stashed changes
     window.addEventListener("scroll", onScroll);
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
   return (
     <nav className={`sticky top-0 z-50 transition-colors backdrop-blur-md border-b border-btn/30 ${
-<<<<<<< Updated upstream
-      scrolled ? "bg-[#ACC18A]" : "bg-bg/88"
-    }`}>      <div className="max-w-5xl mx-auto px-6 h-16 flex items-center justify-between">
-=======
       scrolled ? "bg-green-500" : "bg-bg/88"
     }`}>      
     <div className="max-w-5xl mx-auto px-6 h-16 flex items-center justify-between">
->>>>>>> Stashed changes
         {/* Logo */}
         <a href="#" className="flex items-center gap-2 font-display text-xl text-text">
           CoolSquares
