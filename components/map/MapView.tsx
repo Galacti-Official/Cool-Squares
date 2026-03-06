@@ -92,10 +92,10 @@ function MiniMap({ area }: { area: SelectedArea }) {
 }
 
 const NAV_ITEMS = [
-  { id: "overview", label: "Overview",       icon: "◈" },
-  { id: "land",     label: "Land use",       icon: "⬡" },
-  { id: "climate",  label: "Climate",        icon: "◌" },
-  { id: "infra",    label: "Infrastructure", icon: "⊞" },
+  { id: "overview", label: "Přehled",        icon: "◈" },
+  { id: "land",     label: "Využití půdy",   icon: "⬡" },
+  { id: "climate",  label: "Klima",          icon: "◌" },
+  { id: "infra",    label: "Infrastruktura", icon: "⊞" },
   { id: "export",   label: "Export",         icon: "↗" },
 ];
 
@@ -150,23 +150,23 @@ function ResultsPage({
           }}
         >
           <span style={{ fontSize: 17, lineHeight: 1 }}>←</span>
-          <span>Back to map</span>
+          <span>Zpět na mapu</span>
         </button>
 
         <div style={{ flex: 1, padding: "0 24px", display: "flex", alignItems: "center", gap: 10 }}>
           <span style={{ fontSize: 11, letterSpacing: "0.12em", color: "#2e3a1f88", textTransform: "uppercase" }}>
-            Selected area
+            Vybraná oblast
           </span>
           <span style={{ color: "#2e3a1f44", fontSize: 11 }}>·</span>
           <span style={{ fontSize: 13, color: "#2e3a1f", fontStyle: "italic" }}>
             {areaSqKm < 1 ? `${(areaSqKm * 100).toFixed(1)} ha` : `${areaSqKm.toFixed(1)} km²`}
           </span>
           <span style={{ color: "#2e3a1f44", fontSize: 11 }}>·</span>
-          <span style={{ fontSize: 13, color: "#2e3a1f99" }}>{points.length} vertices</span>
+          <span style={{ fontSize: 13, color: "#2e3a1f99" }}>{points.length} vrcholů</span>
         </div>
 
         <div style={{ display: "flex", alignItems: "center", height: "100%", borderLeft: "1.5px solid #2e3a1f22" }}>
-          {["Share", "Save"].map((label) => (
+          {["Sdílet", "Uložit"].map((label) => (
             <button
               key={label}
               style={{
@@ -188,7 +188,7 @@ function ResultsPage({
               fontSize: 13, fontFamily: "inherit", letterSpacing: "0.04em",
             }}
           >
-            Open in planner →
+            Otevřít v plánovači →
           </button>
         </div>
       </header>
@@ -223,10 +223,10 @@ function ResultsPage({
           {activeTab === "overview" && (
             <div style={{ maxWidth: 820 }}>
               <h1 style={{ fontSize: 28, fontWeight: 400, color: "#2e3a1f", marginBottom: 6, lineHeight: 1.2, fontStyle: "italic" }}>
-                Custom area
+                Vlastní oblast
               </h1>
               <p style={{ fontSize: 13, color: "#2e3a1f77", marginBottom: 36, letterSpacing: "0.04em" }}>
-                Drawn on Czech Republic · {new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}
+                Nakresleno v České republice · {new Date().toLocaleDateString("cs-CZ", { day: "numeric", month: "long", year: "numeric" })}
               </p>
 
               <div style={{ display: "flex", gap: 24, marginBottom: 32 }}>
@@ -235,12 +235,12 @@ function ResultsPage({
                 </div>
                 <div style={{ flex: 1, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1, background: "#2e3a1f18", border: "1.5px solid #2e3a1f22", borderRadius: 4, overflow: "hidden" }}>
                   {[
-                    { label: "Total area", value: areaSqKm < 1 ? `${(areaSqKm * 100).toFixed(1)} ha` : `${areaSqKm.toFixed(1)} km²` },
-                    { label: "Vertices",   value: points.length },
-                    { label: "Width",      value: `~${widthKm} km` },
-                    { label: "Height",     value: `~${heightKm} km` },
-                    { label: "Centre lat", value: `${centerLat}° N` },
-                    { label: "Centre lng", value: `${centerLng}° E` },
+                    { label: "Celková plocha", value: areaSqKm < 1 ? `${(areaSqKm * 100).toFixed(1)} ha` : `${areaSqKm.toFixed(1)} km²` },
+                    { label: "Vrcholy",        value: points.length },
+                    { label: "Šířka",          value: `~${widthKm} km` },
+                    { label: "Výška",          value: `~${heightKm} km` },
+                    { label: "Střed. šířka",   value: `${centerLat}° N` },
+                    { label: "Střed. délka",   value: `${centerLng}° E` },
                   ].map(({ label, value }) => (
                     <div key={label} style={{ background: "#F4F5E0", padding: "16px 20px" }}>
                       <div style={{ fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "#2e3a1f66", marginBottom: 6 }}>{label}</div>
@@ -250,18 +250,18 @@ function ResultsPage({
                 </div>
               </div>
 
-              {["Land cover summary", "Elevation profile", "Administrative units"].map((title) => (
+              {["Souhrn pokryvu půdy", "Výškový profil", "Správní celky"].map((title) => (
                 <div key={title} style={{ border: "1.5px solid #2e3a1f22", borderRadius: 4, marginBottom: 16, overflow: "hidden" }}>
                   <div style={{ padding: "14px 20px", borderBottom: "1.5px solid #2e3a1f22", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                     <span style={{ fontSize: 13, color: "#2e3a1f", letterSpacing: "0.04em" }}>{title}</span>
-                    <span style={{ fontSize: 11, color: "#2e3a1f44", letterSpacing: "0.08em" }}>COMING SOON</span>
+                    <span style={{ fontSize: 11, color: "#2e3a1f44", letterSpacing: "0.08em" }}>JIŽ BRZY</span>
                   </div>
                   <div style={{
                     height: 80,
                     background: "repeating-linear-gradient(90deg, #2e3a1f08 0px, #2e3a1f08 1px, transparent 1px, transparent 32px), repeating-linear-gradient(0deg, #2e3a1f08 0px, #2e3a1f08 1px, transparent 1px, transparent 32px)",
                     display: "flex", alignItems: "center", justifyContent: "center",
                   }}>
-                    <span style={{ fontSize: 12, color: "#2e3a1f33", fontStyle: "italic" }}>Data will appear here</span>
+                    <span style={{ fontSize: 12, color: "#2e3a1f33", fontStyle: "italic" }}>Data se zobrazí zde</span>
                   </div>
                 </div>
               ))}
@@ -274,14 +274,14 @@ function ResultsPage({
                 {NAV_ITEMS.find(n => n.id === activeTab)?.label}
               </h1>
               <p style={{ fontSize: 13, color: "#2e3a1f77", marginBottom: 36, letterSpacing: "0.04em" }}>
-                This section is under construction.
+                Tato sekce se připravuje.
               </p>
               <div style={{ border: "1.5px dashed #2e3a1f33", borderRadius: 4, padding: "60px 40px", textAlign: "center" }}>
                 <div style={{ fontSize: 32, marginBottom: 12, opacity: 0.3 }}>
                   {NAV_ITEMS.find(n => n.id === activeTab)?.icon}
                 </div>
                 <p style={{ fontSize: 14, color: "#2e3a1f55", fontStyle: "italic" }}>
-                  {NAV_ITEMS.find(n => n.id === activeTab)?.label} data coming soon
+                  Data sekce {NAV_ITEMS.find(n => n.id === activeTab)?.label} již brzy
                 </p>
               </div>
             </div>
@@ -433,7 +433,7 @@ function MapView({ onAreaSelected }: { onAreaSelected: (area: SelectedArea) => v
           const dx = first.x - clicked.x, dy = first.y - clicked.y;
           if (Math.sqrt(dx * dx + dy * dy) < 12) {
             if (closingWouldSelfIntersect(points)) {
-              flashInvalid("Can't close — shape would cross itself");
+              flashInvalid("Nelze uzavřít, tvar by se protínal");
               return;
             }
             closePolygonFn(L, map);
@@ -442,7 +442,7 @@ function MapView({ onAreaSelected }: { onAreaSelected: (area: SelectedArea) => v
         }
 
         if (wouldSelfIntersect(points, latlng)) {
-          flashInvalid("Lines can't cross — try a different point");
+          flashInvalid("Čáry se nesmí křížit, zkuste jiný bod");
           return;
         }
 
@@ -567,13 +567,13 @@ function MapView({ onAreaSelected }: { onAreaSelected: (area: SelectedArea) => v
             onClick={() => setMapStyle("light")}
             className={`px-3 py-1.5 rounded-xl text-xs tracking-wide transition-all ${mapStyle === "light" ? "bg-text text-bg" : "text-text-mid hover:bg-bg/70"}`}
           >
-            Map
+            Mapa
           </button>
           <button
             onClick={() => setMapStyle("satellite")}
             className={`px-3 py-1.5 rounded-xl text-xs tracking-wide transition-all ${mapStyle === "satellite" ? "bg-text text-bg" : "text-text-mid hover:bg-bg/70"}`}
           >
-            Satellite
+            Satelit
           </button>
         </div>
       )}
@@ -586,20 +586,20 @@ function MapView({ onAreaSelected }: { onAreaSelected: (area: SelectedArea) => v
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="flex-shrink-0">
                 <path d="M2 14L6 10M6 10L2 2L14 6L8 8L6 10Z" stroke="#2e3a1f" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
               </svg>
-              Draw area
+              Nakreslit oblast
             </button>
           )}
           {mode === "drawing" && (
             <>
               <div className="bg-bg/95 backdrop-blur-md border border-btn/40 rounded-2xl px-5 py-3 shadow-lg text-sm text-text-mid">
-                {pointCount === 0 && "Click on the map to place first point"}
-                {pointCount === 1 && "Click to add more points"}
-                {pointCount === 2 && "Keep clicking to add points"}
-                {pointCount >= 3 && "Click the first point to finish"}
+                {pointCount === 0 && "Klikněte na mapu pro první bod"}
+                {pointCount === 1 && "Klikněte pro přidání dalších bodů"}
+                {pointCount === 2 && "Pokračujte klikáním pro další body"}
+                {pointCount >= 3 && "Klikněte na první bod pro dokončení"}
               </div>
               <button onMouseDown={(e) => { e.stopPropagation(); clearAll(); }}
                 className="flex items-center gap-2 bg-bg/95 backdrop-blur-md border border-btn/40 rounded-2xl px-4 py-3 shadow-lg hover:border-btn transition-all text-sm text-text-mid">
-                ✕ Cancel
+                ✕ Zrušit
               </button>
             </>
           )}
@@ -616,7 +616,7 @@ function MapView({ onAreaSelected }: { onAreaSelected: (area: SelectedArea) => v
         <div className="absolute inset-0 bg-bg flex items-center justify-center z-[2000]">
           <div className="text-center">
             <div className="text-5xl mb-4 animate-bounce">🌿</div>
-            <p className="font-display text-2xl text-text">Loading map…</p>
+            <p className="font-display text-2xl text-text">Načítání mapy…</p>
           </div>
         </div>
       )}

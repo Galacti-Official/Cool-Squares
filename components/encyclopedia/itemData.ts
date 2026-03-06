@@ -1,4 +1,4 @@
-export type Category = "Planters" | "Pots" | "Ground Cover" | "Water Features" | "Seating";
+export type Category = "Květináče" | "Nádoby" | "Půdní pokryv" | "Vodní prvky" | "Posezení";
 
 export interface Item {
   id: string;
@@ -6,7 +6,7 @@ export interface Item {
   category: Category;
   emoji: string;
   description: string;
-  coolingEffect: number; 
+  coolingEffect: number;
   cost: "low" | "medium" | "high";
   maintenance: "low" | "medium" | "high";
   lifespan: string;       
@@ -21,28 +21,26 @@ export interface Item {
 export const ITEMS: Item[] = [
   {
     id: "1",
-    name: "Modulární květináč",
-    category: "Planters",
+    name: "Rostlinná stěna",
+    category: "Květináče",
     emoji: "🪴",
-    description: "Modulární květináč pro vnitřní i venkovní použití.",
+    description: "Rostlinná stěna, která vytvoří příjemné zastíněné prostředí.",
     coolingEffect: 5,
-    cost: "low",
+    cost: "high",
     maintenance: "low",
-    lifespan: "10–15 years",
-    material: "Plast",
-    weight: "2 kg",
-    dimensions: "30 × 30 × 20 cm",
-    waterNeeded: false,
-    tags: ["modulární", "květináč", "vnitřní"],
+    lifespan: "10–15 let",
+    material: "Dřevo, hliník, nerezová ocel",
+    weight: "2 000 kg (s půdou a plně zavlažené)",
+    dimensions: "3 × 2 × 1 m",
+    waterNeeded: true,
+    tags: ["modulární", "stěna", "venkovní"],
     specs: {
-      "Barva": "Zelená",
-      "Výška": "20 cm",
-      "Průměr": "30 cm"
-    }
-  }
+      "Barva": "Šedo-hnědá",
+    },
+  },
 ];
 
-export const CATEGORIES: Category[] = ["Planters", "Pots", "Ground Cover", "Water Features", "Seating"];
+export const CATEGORIES: Category[] = ["Květináče", "Nádoby", "Půdní pokryv", "Vodní prvky", "Posezení"];
 
-export const COST_LABEL: Record<string, string> = { low: "Low", medium: "Medium", high: "High" };
-export const MAINT_LABEL: Record<string, string> = { low: "Low", medium: "Medium", high: "High" };
+export const COST_LABEL: Record<string, string> = { low: "Nízké", medium: "Střední", high: "Vysoké" };
+export const MAINT_LABEL: Record<string, string> = { low: "Nízká", medium: "Střední", high: "Vysoká" };
