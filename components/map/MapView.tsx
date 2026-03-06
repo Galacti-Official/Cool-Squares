@@ -151,7 +151,7 @@ function ResultsPage({
         opacity: visible ? 1 : 0,
         transform: visible ? "translateY(0)" : "translateY(18px)",
         transition: "opacity 0.38s ease, transform 0.38s ease",
-        fontFamily: "'Georgia', 'Times New Roman', serif",
+        fontFamily: "'PT Sans', sans-serif",
       }}
     >
       {/* Top bar */}
