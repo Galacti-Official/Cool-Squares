@@ -1,18 +1,18 @@
 const features = [
   {
     icon: "🌳",
-    title: "jmeno",
-    desc: "nejake shitky",
+    title: "Rostlinná stěna",
+    desc: "Živá stěna tvořena psím vínem",
   },
   {
     icon: "💧",
-    title: "jmeno",
-    desc: "nejake shitky",
+    title: "Květináče s auto-zavlažováním",
+    desc: "Zavlažovací systém s využitím dešťové vody",
   },
   {
     icon: "📡",
-    title: "jmeno",
-    desc: "aefawefaewfa"
+    title: "Příslušenství",
+    desc: "IoT Senzory, solární panely, vodní nádrže a další",
   }
 ];
 
@@ -24,9 +24,6 @@ export default function Features() {
           <h2 className="font-display text-4xl md:text-5xl text-text mb-3">
             Naše řešení
           </h2>
-          <p className="text-text-mid max-w-md mx-auto">
-            idk
-          </p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">

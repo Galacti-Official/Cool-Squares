@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Mode = "idle" | "drawing";
-type AppPage = "map" | "results" ;
+type AppPage = "map" | "results" | "editor";
 
 interface SelectedArea {
   points: [number, number][];
