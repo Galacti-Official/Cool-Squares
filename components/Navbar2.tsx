@@ -9,11 +9,16 @@ const links = [
   { href: "/#data", label: "Data" }
 ];
 
-document.body.classList.add("no-scroll");
-
 export default function Navbar() {
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+
+  useEffect(() => {
+    document.body.classList.add("no-scroll");
+    return () => {
+      document.body.classList.remove("no-scroll");
+    };
+  }, []);
 
   useEffect(() => {
     const onScroll = () => {
