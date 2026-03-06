@@ -10,21 +10,6 @@ const features = [
     desc: "nejake shitky",
   },
   {
-    icon: "🪨",
-    title: "jmeno",
-    desc: "desc",
-  },
-  {
-    icon: "⛺",
-    title: "jmeno",
-    desc: "nejake shitky",
-  },
-  {
-    icon: "🌿",
-    title: "jmeno",
-    desc: "aegewgawegaet",
-  },
-  {
     icon: "📡",
     title: "jmeno",
     desc: "aefawefaewfa"
@@ -37,7 +22,7 @@ export default function Features() {
       <div className="max-w-5xl mx-auto px-6">
         <div className="text-center mb-14">
           <h2 className="font-display text-4xl md:text-5xl text-text mb-3">
-            Lorem ipsum dolor sit amet
+            Naše řešení
           </h2>
           <p className="text-text-mid max-w-md mx-auto">
             idk

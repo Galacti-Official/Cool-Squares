@@ -22,11 +22,12 @@ export default function Navbar() {
 
   return (
     <nav className={`sticky top-0 z-50 transition-colors backdrop-blur-md border-b border-btn/30 ${
-      scrolled ? "bg-green-500" : "bg-bg/88"
+      scrolled ? "bg-[#ACC18A]" : "bg-bg/88"
     }`}>      
     <div className="max-w-5xl mx-auto px-6 h-16 flex items-center justify-between">
         {/* Logo */}
         <a href="/#" className="flex items-center gap-2 font-display text-xl text-text">
+        <a href="/#" className={`flex items-center gap-2 font-display text-xl text-text ${scrolled ? "text-black" : "text-text"}`}>
           CoolSquares
         </a>
 
@@ -49,7 +50,7 @@ export default function Navbar() {
           <button
             className={`px-5 py-2 rounded-full text-sm font-medium shadow-[0_4px_14px_rgba(172,193,138,0.45)] transition-all hover:-translate-y-0.5 active:translate-y-0 ${
               scrolled
-                ? "bg-white text-[#ACC18A] shadow-lg scale-105 hover:shadow-xl"
+                ? "bg-fg text-black shadow-lg scale-105 hover:shadow-xl"
                 : "bg-btn text-text hover:bg-btn-dark hover:shadow-[0_6px_20px_rgba(172,193,138,0.55)]"
             }`}
           >
