@@ -1223,8 +1223,12 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
     const [wx, wy] = screenToWorld(sx, sy);
 
     const ppm = pixelsPerMetreRef.current;
-    const wPx = Math.max(4, item.w * ppm);
-    const hPx = Math.max(4, item.h * ppm);
+    const baseW = Math.max(0.0001, item.w * ppm);
+    const baseH = Math.max(0.0001, item.h * ppm);
+    const minVisiblePx = 6;
+    const preserveRatioScale = Math.max(minVisiblePx / baseW, minVisiblePx / baseH, 1);
+    const wPx = baseW * preserveRatioScale;
+    const hPx = baseH * preserveRatioScale;
 
     const newEl: PlacedElement = {
       id: genId(), type: item.type,
