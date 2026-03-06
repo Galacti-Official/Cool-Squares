@@ -5,7 +5,7 @@ const steps = [
   },
   {
     title: "Climate modelling",
-    desc: "Site-specific simulations test intervention scenarios before a single euro is committed to construction.",
+    desc: "Site-specific simulations test Robotovention scenarios before a single euro is committed to construction.",
   },
   {
     title: "Co-design workshop",
