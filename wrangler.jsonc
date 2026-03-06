@@ -8,7 +8,7 @@
     "nodejs_compat"
   ],
     "routes": [
-    { "pattern": "cool-squares.galacti.org/", "custom_domain": true }
+    { "pattern": "cool-squares.galacti.org", "custom_domain": true }
   ],
   "assets": {
     "directory": ".open-next/assets",

@@ -1,7 +1,11 @@
+import StlPreview from "./StlPreview";
+
 export default function Hero() {
+  const modelPath = encodeURI("/Rostliná brána.stl");
+
   return (
     <section className="relative py-28 overflow-hidden snap-start">
-      <div className="relative z-10 max-w-5xl mx-auto px-6 flex items-center">
+      <div className="relative z-10 max-w-6xl mx-auto px-6 flex items-center justify-between gap-10">
         {/* Left content */}
         <div className="max-w-xl">
           <h1 className="font-display text-5xl md:text-[4.2rem] leading-[1.1] text-text mb-5">
@@ -23,15 +27,8 @@ export default function Hero() {
           </div>
         </div>
 
-        {/* Floating badge */}
-        <div className="hidden lg:block absolute right-[6%] top-1/2 -translate-y-1/2 bg-fg border-2 border-btn/60 rounded-3xl px-8 py-7 text-center shadow-[0_12px_40px_rgba(46,58,31,0.12)]">
-          <p className="text-xs uppercase tracking-widest text-text-light mb-1">
-            očekávaná teplotní redukce
-          </p>
-          <p className="font-display text-5xl text-text leading-none">–8°C</p>
-          <p className="text-sm font-medium text-btn-dark mt-1">
-            <span className="text-btn">↓</span> po implementaci našeho řešení
-          </p>
+        <div className="hidden lg:block w-[420px] shrink-0 -mt-8">
+          <StlPreview modelPath={modelPath} />
         </div>
       </div>
     </section>
