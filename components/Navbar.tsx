@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 const links = [
   { href: "#features", label: "Řešení" },
@@ -10,10 +10,18 @@ const links = [
 
 export default function Navbar() {
   const [open, setOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 0);
+    window.addEventListener("scroll", onScroll);
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
   return (
-    <nav className="sticky top-0 z-50 bg-bg/88 backdrop-blur-md border-b border-btn/30">
-      <div className="max-w-5xl mx-auto px-6 h-16 flex items-center justify-between">
+    <nav className={`sticky top-0 z-50 transition-colors backdrop-blur-md border-b border-btn/30 ${
+      scrolled ? "bg-[#ACC18A]" : "bg-bg/88"
+    }`}>      <div className="max-w-5xl mx-auto px-6 h-16 flex items-center justify-between">
         {/* Logo */}
         <a href="#" className="flex items-center gap-2 font-display text-xl text-text">
           CoolSquares
@@ -35,7 +43,13 @@ export default function Navbar() {
 
         {/* CTA buttons */}
         <div className="hidden md:flex items-center gap-2">
-          <button className="px-5 py-2 rounded-full text-sm font-medium bg-btn text-text shadow-[0_4px_14px_rgba(172,193,138,0.45)] hover:bg-btn-dark hover:shadow-[0_6px_20px_rgba(172,193,138,0.55)] hover:-translate-y-0.5 active:translate-y-0 transition-all">
+          <button
+            className={`px-5 py-2 rounded-full text-sm font-medium shadow-[0_4px_14px_rgba(172,193,138,0.45)] transition-all hover:-translate-y-0.5 active:translate-y-0 ${
+              scrolled
+                ? "bg-white text-[#ACC18A] shadow-lg scale-105 hover:shadow-xl"
+                : "bg-btn text-text hover:bg-btn-dark hover:shadow-[0_6px_20px_rgba(172,193,138,0.55)]"
+            }`}
+          >
             Začít
           </button>
         </div>
