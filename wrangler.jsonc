@@ -2,9 +2,13 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "main": ".open-next/worker.js",
   "name": "cool-squares",
+  "workers_dev": true,
   "compatibility_date": "2025-09-27",
   "compatibility_flags": [
     "nodejs_compat"
+  ],
+    "routes": [
+    { "pattern": "cool-squares.galacti.org/*", "custom_domain": true }
   ],
   "assets": {
     "directory": ".open-next/assets",
