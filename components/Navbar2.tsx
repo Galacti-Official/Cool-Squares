@@ -54,13 +54,9 @@ export default function Navbar() {
         <div className="hidden md:flex items-center gap-2">
           <Link
             href="/map"
-            className={`px-5 py-2 rounded-full text-sm font-medium shadow-[0_4px_14px_rgba(172,193,138,0.45)] transition-all hover:-translate-y-0.5 active:translate-y-0 ${
-              scrolled
-                ? "bg-[#f4f5e0] text-black shadow-lg scale-105 hover:shadow-xl"
-                : "bg-btn text-text hover:bg-btn-dark hover:shadow-[0_6px_20px_rgba(172,193,138,0.55)]"
-            }`}
+            className="px-5 py-2 rounded-full text-sm font-medium shadow-[0_4px_14px_rgba(172,193,138,0.45)] transition-all hover:-translate-y-0.5 active:translate-y-0"
           >
-            Začít
+            idk 
           </Link>
         </div>
       </div>
