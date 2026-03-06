@@ -2,19 +2,24 @@
 @tailwind components;
 @tailwind utilities;
 
-@import url('https://fonts.googleapis.com/css2?family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500&display=swap');
-
-@layer base {
-  html {
-    scroll-behavior: smooth;
-  }
-  body {
-    @apply bg-bg text-text font-body overflow-x-hidden;
-  }
+:root {
+	--background: #ffffff;
+	--foreground: #f4f5e0;
 }
 
-@layer utilities {
-  .text-gradient {
-    @apply text-text-light;
-  }
+@theme inline {
+	--color-background: var(--background);
+	--color-foreground: var(--foreground);
+}
+
+@media (prefers-color-scheme: dark) {
+	:root {
+		--background: #f4f5e0;
+		--foreground: #ededed;
+	}
+}
+
+body {
+	background: var(--background);
+	color: var(--foreground);
 }

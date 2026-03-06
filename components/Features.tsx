@@ -1,34 +1,34 @@
 const features = [
   {
     icon: "🌳",
-    title: "Strategic Tree Planting",
-    desc: "Canopy-optimised species selected for maximum shade coverage and low water demand, reducing radiant heat by up to 40%.",
+    title: "jmeno",
+    desc: "nejake shitky",
   },
   {
     icon: "💧",
-    title: "Misting & Water Features",
-    desc: "Low-energy evaporative cooling via ground-level mist jets and reflective shallow pools that double as social spaces.",
+    title: "dalsi nazev vole",
+    desc: "nejake shitky",
   },
   {
     icon: "🪨",
-    title: "Cool Paving Materials",
-    desc: "High-albedo and permeable surfaces that reflect sunlight and allow rainwater infiltration to cool the ground.",
+    title: "picovina 3",
+    desc: "jirikova picovina",
   },
   {
     icon: "⛺",
-    title: "Adaptive Shade Canopies",
-    desc: "Tensile fabric structures engineered to track the sun's arc, providing shade when and where it is needed most.",
+    title: "idk",
+    desc: "nejake shitky",
   },
   {
     icon: "🌿",
-    title: "Green Infrastructure",
-    desc: "Vertical gardens, living walls, and grass buffers that absorb heat, improve air quality, and boost biodiversity.",
+    title: "gawegarhwryjy5t",
+    desc: "aegewgawegaet",
   },
   {
     icon: "📡",
-    title: "IoT Monitoring Network",
-    desc: "Real-time temperature and humidity sensors feed a dashboard so cities can measure impact and iterate quickly.",
-  },
+    title: "fioajewof",
+    desc: "aefawefaewfa"
+  }
 ];
 
 export default function Features() {
@@ -37,10 +37,10 @@ export default function Features() {
       <div className="max-w-5xl mx-auto px-6">
         <div className="text-center mb-14">
           <h2 className="font-display text-4xl md:text-5xl text-text mb-3">
-            Layered cooling solutions
+            Lorem ipsum dolor sit amet
           </h2>
           <p className="text-text-mid max-w-md mx-auto">
-            Each intervention is modelled against local climate data before recommendation.
+            
           </p>
         </div>
 

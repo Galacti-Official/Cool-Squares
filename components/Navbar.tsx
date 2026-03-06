@@ -3,8 +3,8 @@
 import { useState } from "react";
 
 const links = [
-  { href: "#features", label: "Solutions" },
-  { href: "#how", label: "How it works" },
+  { href: "#features", label: "Řešení" },
+  { href: "#how", label: "Jak to funguje?" },
   { href: "#data", label: "Data" }
 ];
 
@@ -16,7 +16,7 @@ export default function Navbar() {
       <div className="max-w-5xl mx-auto px-6 h-16 flex items-center justify-between">
         {/* Logo */}
         <a href="#" className="flex items-center gap-2 font-display text-xl text-text">
-          <span>🌿</span> CoolSquares
+          CoolSquares
         </a>
 
         {/* Desktop links */}
@@ -36,7 +36,7 @@ export default function Navbar() {
         {/* CTA buttons */}
         <div className="hidden md:flex items-center gap-2">
           <button className="px-5 py-2 rounded-full text-sm font-medium bg-btn text-text shadow-[0_4px_14px_rgba(172,193,138,0.45)] hover:bg-btn-dark hover:shadow-[0_6px_20px_rgba(172,193,138,0.55)] hover:-translate-y-0.5 active:translate-y-0 transition-all">
-            Get started
+            Začít
           </button>
         </div>
       </div>
