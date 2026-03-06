@@ -1,5 +1,3 @@
-import FadeUp from "./FadeUp";
-
 export default function Hero() {
   return (
     <section className="relative py-28 overflow-hidden">
@@ -9,7 +7,7 @@ export default function Hero() {
 
       <div className="relative z-10 max-w-5xl mx-auto px-6 flex items-center">
         {/* Left content */}
-        <FadeUp className="max-w-xl">
+        <div className="max-w-xl">
           {/* Eyebrow */}
           <span className="inline-flex items-center gap-2 bg-fg border border-btn/50 rounded-full px-4 py-1.5 text-xs font-medium tracking-widest uppercase text-text-mid mb-6">
             🌡️ Urban Heat Island Response
@@ -34,7 +32,7 @@ export default function Hero() {
               View case studies
             </button>
           </div>
-        </FadeUp>
+        </div>
 
         {/* Floating badge */}
         <div className="hidden lg:block absolute right-[6%] top-1/2 -translate-y-1/2 bg-fg border-2 border-btn/60 rounded-3xl px-8 py-7 text-center animate-float shadow-[0_12px_40px_rgba(46,58,31,0.12)]">

@@ -1,10 +1,8 @@
-import FadeUp from "./FadeUp";
-
 export default function CtaBanner() {
   return (
     <section id="contact" className="py-20">
       <div className="max-w-5xl mx-auto px-6">
-        <FadeUp>
+        <div>
           <div className="bg-gradient-to-br from-btn to-[#c8dba0] rounded-3xl px-10 py-14 flex flex-col md:flex-row items-center justify-between gap-8">
             <h2 className="font-display text-3xl md:text-4xl text-text max-w-lg">
               Is your city square suffering from heat stress?
@@ -13,7 +11,7 @@ export default function CtaBanner() {
               Request a free thermal audit →
             </button>
           </div>
-        </FadeUp>
+        </div>
       </div>
     </section>
   );

@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "CoolSquares — Urban Cooling Initiative",
+  title: "CoolSquares — Ochlaďte své město",
   description:
-    "Evidence-based interventions that reduce city square surface temperatures by up to 8°C.",
+    "Tady bude popis",
 };
 
 export default function RootLayout({

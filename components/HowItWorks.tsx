@@ -1,5 +1,3 @@
-import FadeUp from "./FadeUp";
-
 const steps = [
   {
     title: "Thermal audit",
@@ -23,26 +21,24 @@ export default function HowItWorks() {
   return (
     <section id="how" className="bg-fg py-20">
       <div className="max-w-5xl mx-auto px-6">
-        <FadeUp className="text-center mb-14">
+        <div className="text-center mb-14">
           <h2 className="font-display text-4xl md:text-5xl text-text mb-3">
             From assessment to cool square
           </h2>
           <p className="text-text-mid max-w-md mx-auto">
             Our process is rigorous, collaborative, and built around measurable outcomes.
           </p>
-        </FadeUp>
+        </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">
           {steps.map((s, i) => (
-            <FadeUp key={s.title} delay={i * 100}>
-              <div>
-                <p className="font-display text-5xl text-btn/50 leading-none mb-4">
-                  {String(i + 1).padStart(2, "0")}
-                </p>
-                <h3 className="font-display text-lg text-text mb-2">{s.title}</h3>
+            <div key={s.title} className="flex flex-col gap-4">
+              <p className="font-display text-5xl text-btn/50 leading-none mb-4">
+                {String(i + 1).padStart(2, "0")}
+              </p>
+              <h3 className="font-display text-lg text-text mb-2">{s.title}</h3>
                 <p className="text-text-mid text-sm leading-relaxed">{s.desc}</p>
-              </div>
-            </FadeUp>
+            </div>
           ))}
         </div>
       </div>
