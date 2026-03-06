@@ -3,9 +3,9 @@
 import { useState, useEffect } from "react";
 
 const links = [
-  { href: "#features", label: "Řešení" },
-  { href: "#how", label: "Jak to funguje?" },
-  { href: "#data", label: "Data" }
+  { href: "/#features", label: "Řešení" },
+  { href: "/#how", label: "Jak to funguje?" },
+  { href: "/#data", label: "Data" }
 ];
 
 export default function Navbar() {
@@ -26,7 +26,7 @@ export default function Navbar() {
     }`}>      
     <div className="max-w-5xl mx-auto px-6 h-16 flex items-center justify-between">
         {/* Logo */}
-        <a href="#" className="flex items-center gap-2 font-display text-xl text-text">
+        <a href="/#" className="flex items-center gap-2 font-display text-xl text-text">
           CoolSquares
         </a>
 

@@ -12,7 +12,7 @@ export default function MapPage() {
   return (
     <>
       <Navbar />
-      <main className="min-h-screen bg-bg">
+      <main>
         <MapView />
       </main>
       <Footer />

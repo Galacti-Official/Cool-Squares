@@ -1,48 +1,347 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
-import { SQUARES, type Square } from "./squareData"; 
+import { useEffect, useRef, useState } from "react";
 
+// ─── Types ────────────────────────────────────────────────────────────────────
+type Mode = "idle" | "drawing";
+type AppPage = "map" | "results";
 
-function tempToColor(temp: number, alpha = 0.72): string {
-  const t = Math.max(0, Math.min(1, (temp - 28) / 27));
-  const r = Math.round(30 + t * 225);
-  const g = Math.round(180 - t * 160);
-  const b = Math.round(200 - t * 190);
-  return `rgba(${r},${g},${b},${alpha})`;
+interface SelectedArea {
+  points: [number, number][];
+  bounds: { north: number; south: number; east: number; west: number };
+  areaSqKm: number;
 }
 
-function tempLabel(temp: number) {
-  if (temp < 32) return "Cool";
-  if (temp < 38) return "Warm";
-  if (temp < 44) return "Hot";
-  return "Extreme";
+// ─── Geometry helpers ─────────────────────────────────────────────────────────
+function segmentsIntersect(
+  a1: [number, number], a2: [number, number],
+  b1: [number, number], b2: [number, number]
+): boolean {
+  const cross = (o: [number, number], p: [number, number], q: [number, number]) =>
+    (p[0] - o[0]) * (q[1] - o[1]) - (p[1] - o[1]) * (q[0] - o[0]);
+  const d1 = cross(b1, b2, a1), d2 = cross(b1, b2, a2);
+  const d3 = cross(a1, a2, b1), d4 = cross(a1, a2, b2);
+  if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) &&
+    ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) return true;
+  return false;
 }
 
-const INTERVENTION_ICONS: Record<string, string> = {
-  "Tree canopy": "🌳",
-  "Reflective paving": "🪨",
-  "Misting jets": "💧",
-  "Shade canopies": "⛺",
-  "Water features": "🌊",
-  "Green walls": "🌿",
-  "Permeable paving": "🪨",
-  "IoT sensors": "📡",
-};
+function wouldSelfIntersect(points: [number, number][], newPoint: [number, number]): boolean {
+  const n = points.length;
+  if (n < 2) return false;
+  for (let i = 0; i < n - 2; i++) {
+    if (segmentsIntersect(points[n - 1], newPoint, points[i], points[i + 1])) return true;
+  }
+  return false;
+}
 
-export default function MapView() {
+function closingWouldSelfIntersect(points: [number, number][]): boolean {
+  const n = points.length;
+  if (n < 3) return false;
+  for (let i = 1; i < n - 2; i++) {
+    if (segmentsIntersect(points[n - 1], points[0], points[i], points[i + 1])) return true;
+  }
+  return false;
+}
+
+// Shoelace formula — returns sq km (approximate, good enough for CZ scale)
+function computeAreaSqKm(points: [number, number][]): number {
+  const R = 6371;
+  let area = 0;
+  const n = points.length;
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    const lat1 = (points[i][0] * Math.PI) / 180;
+    const lat2 = (points[j][0] * Math.PI) / 180;
+    const dLng = ((points[j][1] - points[i][1]) * Math.PI) / 180;
+    area += dLng * (2 + Math.sin(lat1) + Math.sin(lat2));
+  }
+  return Math.abs((area * R * R) / 2);
+}
+
+// ─── Mini map for results page ────────────────────────────────────────────────
+function MiniMap({ area }: { area: SelectedArea }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const mapRef = useRef<any>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || mapRef.current || !ref.current) return;
+    const L = (window as any).L;
+    if (!L) return;
+
+    const map = L.map(ref.current, {
+      zoomControl: false,
+      dragging: false,
+      scrollWheelZoom: false,
+      doubleClickZoom: false,
+      touchZoom: false,
+      attributionControl: false,
+    });
+    mapRef.current = map;
+
+    L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+      subdomains: "abcd", maxZoom: 20, opacity: 0.6,
+    }).addTo(map);
+
+    const world: [number, number][] = [[-90, -180], [-90, 180], [90, 180], [90, -180]];
+    L.polygon([world, area.points], {
+      color: "transparent",
+      fillColor: "#F4F5E0",
+      fillOpacity: 0.85,
+      fillRule: "evenodd",
+      interactive: false,
+    }).addTo(map);
+
+    const poly = L.polygon(area.points, {
+      color: "#2e3a1f", weight: 2.5, fill: false, interactive: false,
+    }).addTo(map);
+
+    map.fitBounds(poly.getBounds(), { padding: [24, 24] });
+  }, []);
+
+  return <div ref={ref} className="w-full h-full" />;
+}
+
+// ─── Results / detail page ────────────────────────────────────────────────────
+const NAV_ITEMS = [
+  { id: "overview", label: "Overview", icon: "◈" },
+  { id: "land", label: "Land use", icon: "⬡" },
+  { id: "climate", label: "Climate", icon: "◌" },
+  { id: "infra", label: "Infrastructure", icon: "⊞" },
+  { id: "export", label: "Export", icon: "↗" },
+];
+
+function ResultsPage({ area, onBack }: { area: SelectedArea; onBack: () => void }) {
+  const [activeTab, setActiveTab] = useState("overview");
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const t = setTimeout(() => setVisible(true), 40);
+    return () => clearTimeout(t);
+  }, []);
+
+  const { bounds, areaSqKm, points } = area;
+  const centerLat = ((bounds.north + bounds.south) / 2).toFixed(4);
+  const centerLng = ((bounds.east + bounds.west) / 2).toFixed(4);
+  const widthKm = (((bounds.east - bounds.west) * Math.PI * 6371 * Math.cos((((bounds.north + bounds.south) / 2) * Math.PI) / 180)) / 180).toFixed(1);
+  const heightKm = (((bounds.north - bounds.south) * Math.PI * 6371) / 180).toFixed(1);
+
+  return (
+    <div
+      className="absolute inset-0 z-[3000] flex flex-col"
+      style={{
+        background: "#F4F5E0",
+        opacity: visible ? 1 : 0,
+        transform: visible ? "translateY(0)" : "translateY(18px)",
+        transition: "opacity 0.38s ease, transform 0.38s ease",
+        fontFamily: "'Georgia', 'Times New Roman', serif",
+      }}
+    >
+      {/* ── Top bar ── */}
+      <header style={{
+        borderBottom: "1.5px solid #2e3a1f22",
+        background: "#F4F5E0",
+        display: "flex",
+        alignItems: "center",
+        gap: 0,
+        padding: "0 0 0 0",
+        height: 56,
+        flexShrink: 0,
+      }}>
+        <button
+          onClick={onBack}
+          style={{
+            display: "flex", alignItems: "center", gap: 8,
+            padding: "0 20px", height: "100%",
+            borderRight: "1.5px solid #2e3a1f22",
+            background: "none", border: "none",
+            cursor: "pointer", color: "#2e3a1f", fontSize: 13,
+            fontFamily: "inherit", letterSpacing: "0.04em",
+          }}
+        >
+          <span style={{ fontSize: 17, lineHeight: 1 }}>←</span>
+          <span>Back to map</span>
+        </button>
+
+        <div style={{ flex: 1, padding: "0 24px", display: "flex", alignItems: "center", gap: 10 }}>
+          <span style={{ fontSize: 11, letterSpacing: "0.12em", color: "#2e3a1f88", textTransform: "uppercase" }}>
+            Selected area
+          </span>
+          <span style={{ color: "#2e3a1f44", fontSize: 11 }}>·</span>
+          <span style={{ fontSize: 13, color: "#2e3a1f", fontStyle: "italic" }}>
+            {areaSqKm < 1 ? `${(areaSqKm * 100).toFixed(1)} ha` : `${areaSqKm.toFixed(1)} km²`}
+          </span>
+          <span style={{ color: "#2e3a1f44", fontSize: 11 }}>·</span>
+          <span style={{ fontSize: 13, color: "#2e3a1f99" }}>
+            {points.length} vertices
+          </span>
+        </div>
+
+        {/* Right actions — placeholders */}
+        <div style={{ display: "flex", alignItems: "center", height: "100%", borderLeft: "1.5px solid #2e3a1f22" }}>
+          {["Share", "Save"].map((label) => (
+            <button
+              key={label}
+              style={{
+                padding: "0 20px", height: "100%", background: "none", border: "none",
+                borderRight: "1.5px solid #2e3a1f22", cursor: "pointer",
+                color: "#2e3a1f99", fontSize: 13, fontFamily: "inherit",
+                letterSpacing: "0.04em",
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </header>
+
+      {/* ── Main layout: sidebar + content ── */}
+      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+
+        {/* Left nav */}
+        <nav style={{
+          width: 180, flexShrink: 0, borderRight: "1.5px solid #2e3a1f22",
+          display: "flex", flexDirection: "column", padding: "24px 0",
+        }}>
+          {NAV_ITEMS.map((item) => (
+            <button
+              key={item.id}
+              onClick={() => setActiveTab(item.id)}
+              style={{
+                display: "flex", alignItems: "center", gap: 12,
+                padding: "11px 24px", background: "none", border: "none",
+                cursor: "pointer", textAlign: "left", fontFamily: "inherit",
+                fontSize: 13, letterSpacing: "0.04em",
+                color: activeTab === item.id ? "#2e3a1f" : "#2e3a1f66",
+                borderLeft: activeTab === item.id ? "2.5px solid #2e3a1f" : "2.5px solid transparent",
+                transition: "all 0.15s ease",
+              }}
+            >
+              <span style={{ fontSize: 15, opacity: activeTab === item.id ? 1 : 0.5 }}>{item.icon}</span>
+              {item.label}
+            </button>
+          ))}
+        </nav>
+
+        {/* Content area */}
+        <main style={{ flex: 1, overflow: "auto", padding: "32px 40px" }}>
+
+          {activeTab === "overview" && (
+            <div style={{ maxWidth: 820 }}>
+              <h1 style={{
+                fontSize: 28, fontWeight: 400, color: "#2e3a1f",
+                marginBottom: 6, lineHeight: 1.2,
+                fontStyle: "italic",
+              }}>
+                Custom area
+              </h1>
+              <p style={{ fontSize: 13, color: "#2e3a1f77", marginBottom: 36, letterSpacing: "0.04em" }}>
+                Drawn on Czech Republic · {new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}
+              </p>
+
+              {/* Map preview + stats row */}
+              <div style={{ display: "flex", gap: 24, marginBottom: 32 }}>
+                {/* Mini map */}
+                <div style={{
+                  width: 320, height: 220, flexShrink: 0,
+                  border: "1.5px solid #2e3a1f22", borderRadius: 4, overflow: "hidden",
+                }}>
+                  <MiniMap area={area} />
+                </div>
+
+                {/* Stats grid */}
+                <div style={{ flex: 1, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1, background: "#2e3a1f18", border: "1.5px solid #2e3a1f22", borderRadius: 4, overflow: "hidden" }}>
+                  {[
+                    { label: "Total area", value: areaSqKm < 1 ? `${(areaSqKm * 100).toFixed(1)} ha` : `${areaSqKm.toFixed(1)} km²` },
+                    { label: "Vertices", value: points.length },
+                    { label: "Width", value: `~${widthKm} km` },
+                    { label: "Height", value: `~${heightKm} km` },
+                    { label: "Centre lat", value: `${centerLat}° N` },
+                    { label: "Centre lng", value: `${centerLng}° E` },
+                  ].map(({ label, value }) => (
+                    <div key={label} style={{ background: "#F4F5E0", padding: "16px 20px" }}>
+                      <div style={{ fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "#2e3a1f66", marginBottom: 6 }}>{label}</div>
+                      <div style={{ fontSize: 20, color: "#2e3a1f", fontStyle: "italic" }}>{value}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Placeholder sections */}
+              {["Land cover summary", "Elevation profile", "Administrative units"].map((title, idx) => (
+                <div key={title} style={{
+                  border: "1.5px solid #2e3a1f22", borderRadius: 4,
+                  marginBottom: 16, overflow: "hidden",
+                }}>
+                  <div style={{
+                    padding: "14px 20px", borderBottom: "1.5px solid #2e3a1f22",
+                    display: "flex", alignItems: "center", justifyContent: "space-between",
+                  }}>
+                    <span style={{ fontSize: 13, color: "#2e3a1f", letterSpacing: "0.04em" }}>{title}</span>
+                    <span style={{ fontSize: 11, color: "#2e3a1f44", letterSpacing: "0.08em" }}>COMING SOON</span>
+                  </div>
+                  <div style={{
+                    height: 80, background: "repeating-linear-gradient(90deg, #2e3a1f08 0px, #2e3a1f08 1px, transparent 1px, transparent 32px), repeating-linear-gradient(0deg, #2e3a1f08 0px, #2e3a1f08 1px, transparent 1px, transparent 32px)",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                  }}>
+                    <span style={{ fontSize: 12, color: "#2e3a1f33", fontStyle: "italic" }}>Data will appear here</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {activeTab !== "overview" && (
+            <div style={{ maxWidth: 820 }}>
+              <h1 style={{
+                fontSize: 28, fontWeight: 400, color: "#2e3a1f",
+                marginBottom: 6, lineHeight: 1.2, fontStyle: "italic",
+              }}>
+                {NAV_ITEMS.find(n => n.id === activeTab)?.label}
+              </h1>
+              <p style={{ fontSize: 13, color: "#2e3a1f77", marginBottom: 36, letterSpacing: "0.04em" }}>
+                This section is under construction.
+              </p>
+              <div style={{
+                border: "1.5px dashed #2e3a1f33", borderRadius: 4,
+                padding: "60px 40px", textAlign: "center",
+              }}>
+                <div style={{ fontSize: 32, marginBottom: 12, opacity: 0.3 }}>
+                  {NAV_ITEMS.find(n => n.id === activeTab)?.icon}
+                </div>
+                <p style={{ fontSize: 14, color: "#2e3a1f55", fontStyle: "italic" }}>
+                  {NAV_ITEMS.find(n => n.id === activeTab)?.label} data coming soon
+                </p>
+              </div>
+            </div>
+          )}
+        </main>
+      </div>
+    </div>
+  );
+}
+
+// ─── Map view ─────────────────────────────────────────────────────────────────
+function MapView({ onAreaSelected }: { onAreaSelected: (area: SelectedArea) => void }) {
   const mapRef = useRef<HTMLDivElement>(null);
   const leafletMapRef = useRef<any>(null);
-  const markersRef = useRef<any[]>([]);
-  const overlaysRef = useRef<{ before: any; after: any }[]>([]);
-  const [selected, setSelected] = useState<Square>(SQUARES[0]);
-  const [mode, setMode] = useState<"before" | "after">("before");
-  const [sliderValue, setSliderValue] = useState(50);
+  const czGeoJsonRef = useRef<any>(null);
+  const clipLayerRef = useRef<any>(null);
   const [mapReady, setMapReady] = useState(false);
-  const sliderRef = useRef<HTMLDivElement>(null);
-  const isDragging = useRef(false);
+  const [mode, setMode] = useState<Mode>("idle");
+  const [pointCount, setPointCount] = useState(0);
+  const [invalidMsg, setInvalidMsg] = useState<string | null>(null);
 
-  // ── Init Leaflet ──────────────────────────────────
+  const pointsRef = useRef<[number, number][]>([]);
+  const tempMarkersRef = useRef<any[]>([]);
+  const tempPolylineRef = useRef<any>(null);
+  const polygonRef = useRef<any>(null);
+  const maskRef = useRef<any>(null);
+  const modeRef = useRef<Mode>("idle");
+  const closingRef = useRef(false);
+
+  useEffect(() => { modeRef.current = mode; }, [mode]);
+
   useEffect(() => {
     if (typeof window === "undefined" || leafletMapRef.current) return;
 
@@ -51,400 +350,307 @@ export default function MapView() {
     link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
     document.head.appendChild(link);
 
+    const existingScript = document.querySelector('script[src*="leaflet"]');
+    if (existingScript) {
+      if ((window as any).L) {
+        initMap();
+      } else {
+        existingScript.addEventListener("load", initMap);
+      }
+      return;
+    }
+
     const script = document.createElement("script");
     script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
-    script.onload = () => {
+    script.onload = initMap;
+    document.head.appendChild(script);
+
+    async function initMap() {
       const L = (window as any).L;
+      if (!L) {
+        console.error("Leaflet failed to load, cannot initialize map");
+        return;
+      }
       if (!mapRef.current || leafletMapRef.current) return;
 
       const map = L.map(mapRef.current, {
-        center: [48.5, 10.5],
-        zoom: 5,
-        zoomControl: false,
+        center: [49.75, 15.5], zoom: 8,
+        zoomControl: false, minZoom: 7,
       });
-
       L.control.zoom({ position: "bottomright" }).addTo(map);
-
-      // Tile layer — CartoDB light for our palette
-      L.tileLayer(
-        "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
-        {
-          attribution: "© OpenStreetMap contributors © CARTO",
-          subdomains: "abcd",
-          maxZoom: 19,
-        }
-      ).addTo(map);
-
       leafletMapRef.current = map;
 
-      // Add markers + circle overlays per square
-      SQUARES.forEach((sq) => {
-        const icon = L.divIcon({
-          className: "",
-          html: `<div style="
-            width:36px;height:36px;border-radius:50%;
-            background:${tempToColor(sq.tempBefore)};
-            border:3px solid #ACC18A;
-            display:flex;align-items:center;justify-content:center;
-            font-size:11px;font-weight:600;color:#2e3a1f;
-            box-shadow:0 2px 8px rgba(0,0,0,0.25);
-            cursor:pointer;transition:transform .15s;
-          ">${sq.tempBefore}°</div>`,
-          iconSize: [36, 36],
-          iconAnchor: [18, 18],
-        });
+      let czFeature: any = null;
+      try {
+        const res = await fetch("https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson");
+        const data = await res.json();
+        czFeature = data.features.find((f: any) => f.properties.ISO_A2 === "CZ");
+        czGeoJsonRef.current = czFeature;
+      } catch (e) { console.error("Failed to load CZ GeoJSON", e); }
 
-        const marker = L.marker([sq.lat, sq.lng], { icon }).addTo(map);
-        marker.on("click", () => setSelected(sq));
-        markersRef.current.push({ sq, marker });
+      map.createPane("bgPane").style.zIndex = "199";
+      map.createPane("czPane").style.zIndex = "200";
 
-        // Heat circle overlays
-        const before = L.circle([sq.lat, sq.lng], {
-          radius: 400,
-          color: "transparent",
-          fillColor: tempToColor(sq.tempBefore, 0.45),
-          fillOpacity: 1,
+      L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+        attribution: "© OpenStreetMap contributors © CARTO",
+        subdomains: "abcd", maxZoom: 20, pane: "bgPane", opacity: 0.15,
+      }).addTo(map);
+
+      const czTileLayer = L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+        attribution: "", subdomains: "abcd", maxZoom: 20, pane: "czPane",
+      }).addTo(map);
+      clipLayerRef.current = czTileLayer;
+
+      if (czFeature) {
+        const czBounds = L.geoJSON(czFeature).getBounds();
+        map.setMaxBounds(czBounds.pad(0.2));
+        map.fitBounds(czBounds, { padding: [40, 40] });
+
+        const applyClip = () => {
+          const paneEl = map.getPane("czPane") as HTMLElement;
+          if (!paneEl) return;
+          const old = paneEl.querySelector("svg.cz-clip");
+          if (old) old.remove();
+          const size = map.getSize();
+          const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+          svg.setAttribute("class", "cz-clip");
+          svg.style.cssText = `position:absolute;top:0;left:0;width:${size.x}px;height:${size.y}px;pointer-events:none;overflow:visible;`;
+          const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+          const clipPath = document.createElementNS("http://www.w3.org/2000/svg", "clipPath");
+          clipPath.setAttribute("id", "cz-clip-path");
+          const toPixel = (coord: number[]) => {
+            const pt = map.latLngToContainerPoint(L.latLng(coord[1], coord[0]));
+            return `${pt.x},${pt.y}`;
+          };
+          const geom = czFeature.geometry;
+          const polys = geom.type === "Polygon" ? [geom.coordinates] : geom.coordinates;
+          let d = "";
+          polys.forEach((poly: number[][][]) => {
+            poly.forEach((ring: number[][]) => {
+              d += "M " + ring.map(toPixel).join(" L ") + " Z ";
+            });
+          });
+          const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+          path.setAttribute("d", d);
+          path.setAttribute("fill-rule", "evenodd");
+          clipPath.appendChild(path);
+          defs.appendChild(clipPath);
+          svg.appendChild(defs);
+          paneEl.style.clipPath = "";
+          paneEl.insertBefore(svg, paneEl.firstChild);
+          paneEl.style.clipPath = `url(#cz-clip-path)`;
+        };
+
+        applyClip();
+        map.on("moveend zoomend resize viewreset", applyClip);
+
+        L.geoJSON(czFeature, {
+          style: { color: "#2e3a1f", weight: 2, fill: false, opacity: 0.7 },
+          interactive: false,
         }).addTo(map);
+      }
 
-        const after = L.circle([sq.lat, sq.lng], {
-          radius: 400,
-          color: "transparent",
-          fillColor: tempToColor(sq.tempAfter, 0.45),
-          fillOpacity: 0,
-        }).addTo(map);
+      map.on("click", (e: any) => {
+        if (modeRef.current !== "drawing") return;
+        if (closingRef.current) return;
 
-        overlaysRef.current.push({ before, after });
+        const latlng: [number, number] = [e.latlng.lat, e.latlng.lng];
+        const points = pointsRef.current;
+
+        if (points.length >= 3) {
+          const first = map.latLngToContainerPoint(L.latLng(points[0]));
+          const clicked = map.latLngToContainerPoint(e.latlng);
+          const dx = first.x - clicked.x;
+          const dy = first.y - clicked.y;
+          if (Math.sqrt(dx * dx + dy * dy) < 12) {
+            if (closingWouldSelfIntersect(points)) {
+              flashInvalid("Can't close — shape would cross itself");
+              return;
+            }
+            closePolygonFn(L, map);
+            return;
+          }
+        }
+
+        if (wouldSelfIntersect(points, latlng)) {
+          flashInvalid("Lines can't cross — try a different point");
+          return;
+        }
+
+        points.push(latlng);
+        setPointCount(points.length);
+        updateDrawing(L, map);
       });
 
       setMapReady(true);
-    };
-    document.head.appendChild(script);
+    }
   }, []);
 
-  // ── Update overlays when mode changes ────────────
-  useEffect(() => {
-    if (!mapReady) return;
-    overlaysRef.current.forEach(({ before, after }) => {
-      before.setStyle({ fillOpacity: mode === "before" ? 0.45 : 0 });
-      after.setStyle({ fillOpacity: mode === "after" ? 0.45 : 0 });
-    });
+  function flashInvalid(msg: string) {
+    setInvalidMsg(msg);
+    setTimeout(() => setInvalidMsg(null), 2200);
+  }
 
-    // Update marker icons
+  function updateDrawing(L: any, map: any) {
+    const points = pointsRef.current;
+    tempMarkersRef.current.forEach((m) => map.removeLayer(m));
+    tempMarkersRef.current = [];
+    if (tempPolylineRef.current) { map.removeLayer(tempPolylineRef.current); tempPolylineRef.current = null; }
+    points.forEach((pt, i) => {
+      const isFirst = i === 0;
+      const dot = L.circleMarker(pt, {
+        radius: isFirst ? 8 : 5,
+        color: "#2e3a1f",
+        fillColor: isFirst && points.length >= 3 ? "#ACC18A" : "#ffffff",
+        fillOpacity: 1,
+        weight: isFirst ? 3 : 2,
+      }).addTo(map);
+      tempMarkersRef.current.push(dot);
+    });
+    if (points.length > 1) {
+      tempPolylineRef.current = L.polyline(points, {
+        color: "#2e3a1f", weight: 2, dashArray: "6 4", opacity: 0.8,
+      }).addTo(map);
+    }
+  }
+
+  function closePolygonFn(L: any, map: any) {
+    const points = pointsRef.current;
+    if (points.length < 3) return;
+    closingRef.current = true;
+
+    tempMarkersRef.current.forEach((m) => map.removeLayer(m));
+    tempMarkersRef.current = [];
+    if (tempPolylineRef.current) { map.removeLayer(tempPolylineRef.current); tempPolylineRef.current = null; }
+    if (polygonRef.current) map.removeLayer(polygonRef.current);
+    if (maskRef.current) map.removeLayer(maskRef.current);
+
+    const world: [number, number][] = [[-90, -180], [-90, 180], [90, 180], [90, -180]];
+    maskRef.current = L.polygon([world, points], {
+      color: "transparent", fillColor: "#F4F5E0",
+      fillOpacity: 0.92, fillRule: "evenodd", interactive: false,
+    }).addTo(map);
+
+    polygonRef.current = L.polygon(points, {
+      color: "#2e3a1f", weight: 2, fill: false, interactive: false,
+    }).addTo(map);
+
+    map.fitBounds(polygonRef.current.getBounds(), { padding: [60, 60], maxZoom: 18 });
+
+    // Compute area data
+    const lats = points.map(p => p[0]);
+    const lngs = points.map(p => p[1]);
+    const selectedArea: SelectedArea = {
+      points: [...points],
+      bounds: {
+        north: Math.max(...lats), south: Math.min(...lats),
+        east: Math.max(...lngs), west: Math.min(...lngs),
+      },
+      areaSqKm: computeAreaSqKm(points),
+    };
+
+    pointsRef.current = [];
+    setPointCount(0);
+    setMode("idle");
+    setTimeout(() => { closingRef.current = false; }, 300);
+
+    // Small delay so the user sees the polygon close before navigating
+    setTimeout(() => {
+      onAreaSelected(selectedArea);
+    }, 600);
+  }
+
+  function clearAll() {
     const L = (window as any).L;
-    if (!L) return;
-    markersRef.current.forEach(({ sq, marker }) => {
-      const temp = mode === "before" ? sq.tempBefore : sq.tempAfter;
-      const isSelected = sq.id === selected.id;
-      marker.setIcon(
-        L.divIcon({
-          className: "",
-          html: `<div style="
-            width:${isSelected ? 44 : 36}px;height:${isSelected ? 44 : 36}px;border-radius:50%;
-            background:${tempToColor(temp)};
-            border:${isSelected ? "4px solid #2e3a1f" : "3px solid #ACC18A"};
-            display:flex;align-items:center;justify-content:center;
-            font-size:${isSelected ? 12 : 11}px;font-weight:700;color:#2e3a1f;
-            box-shadow:0 ${isSelected ? 4 : 2}px ${isSelected ? 14 : 8}px rgba(0,0,0,0.3);
-            cursor:pointer;transition:transform .15s;
-          ">${temp}°</div>`,
-          iconSize: [isSelected ? 44 : 36, isSelected ? 44 : 36],
-          iconAnchor: [isSelected ? 22 : 18, isSelected ? 22 : 18],
-        })
-      );
-    });
-  }, [mode, mapReady, selected]);
+    const map = leafletMapRef.current;
+    if (!L || !map) return;
+    tempMarkersRef.current.forEach((m) => map.removeLayer(m));
+    tempMarkersRef.current = [];
+    if (tempPolylineRef.current) { map.removeLayer(tempPolylineRef.current); tempPolylineRef.current = null; }
+    if (polygonRef.current) { map.removeLayer(polygonRef.current); polygonRef.current = null; }
+    if (maskRef.current) { map.removeLayer(maskRef.current); maskRef.current = null; }
+    pointsRef.current = [];
+    setPointCount(0);
+    setMode("idle");
+  }
 
-  // ── Fly to selected square ────────────────────────
-  useEffect(() => {
-    if (!mapReady || !leafletMapRef.current) return;
-    leafletMapRef.current.flyTo([selected.lat, selected.lng], 14, {
-      duration: 1.2,
-    });
-  }, [selected, mapReady]);
-
-  // ── Slider drag logic ─────────────────────────────
-  const handleSliderMove = useCallback((clientX: number) => {
-    if (!sliderRef.current) return;
-    const rect = sliderRef.current.getBoundingClientRect();
-    const pct = Math.max(0, Math.min(100, ((clientX - rect.left) / rect.width) * 100));
-    setSliderValue(pct);
-    setMode(pct < 50 ? "before" : "after");
-  }, []);
+  function startDrawing() { clearAll(); setMode("drawing"); }
 
   useEffect(() => {
-    const onMove = (e: MouseEvent | TouchEvent) => {
-      if (!isDragging.current) return;
-      const clientX = "touches" in e ? e.touches[0].clientX : e.clientX;
-      handleSliderMove(clientX);
-    };
-    const onUp = () => { isDragging.current = false; };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("touchmove", onMove);
-    window.addEventListener("mouseup", onUp);
-    window.addEventListener("touchend", onUp);
-    return () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("touchmove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      window.removeEventListener("touchend", onUp);
-    };
-  }, [handleSliderMove]);
-
-  const tempDrop = selected.tempBefore - selected.tempAfter;
-  const currentTemp = mode === "before" ? selected.tempBefore : selected.tempAfter;
+    if (!mapRef.current) return;
+    mapRef.current.style.cursor = mode === "drawing" ? "crosshair" : "";
+  }, [mode]);
 
   return (
-    <div className="flex flex-col" style={{ height: "calc(100vh - 64px)" }}>
+    <div className="relative w-full" style={{ height: "calc(100vh - 64px - 57px)" }}>
+      <div ref={mapRef} className="absolute inset-0" />
 
-      {/* ── Top bar ── */}
-      <div className="bg-bg border-b border-btn/30 px-6 py-3 flex items-center justify-between gap-4 flex-shrink-0">
-        <div>
-          <h1 className="font-display text-2xl text-text leading-none">
-            Thermal Impact Map
-          </h1>
-          <p className="text-xs text-text-light mt-0.5">
-            Drag the slider or click a marker to explore before &amp; after cooling data
-          </p>
-        </div>
-
-        {/* Mode toggle */}
-        <div className="flex items-center gap-3 bg-fg border border-btn/40 rounded-full p-1">
-          <button
-            onClick={() => setMode("before")}
-            className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${
-              mode === "before"
-                ? "bg-[rgba(220,100,60,0.2)] text-text border border-orange-300/50"
-                : "text-text-mid hover:text-text"
-            }`}
-          >
-            🔥 Before
-          </button>
-          <button
-            onClick={() => setMode("after")}
-            className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${
-              mode === "after"
-                ? "bg-btn text-text border border-btn"
-                : "text-text-mid hover:text-text"
-            }`}
-          >
-            🌿 After
-          </button>
-        </div>
-      </div>
-
-      {/* ── Main layout ── */}
-      <div className="flex flex-1 overflow-hidden">
-
-        {/* ── Sidebar ── */}
-        <aside className="w-80 flex-shrink-0 bg-bg border-r border-btn/30 flex flex-col overflow-hidden">
-
-          {/* Square list */}
-          <div className="flex-1 overflow-y-auto p-3 space-y-2">
-            <p className="text-xs uppercase tracking-widest text-text-light px-2 pt-1 pb-2">
-              Transformed Squares
-            </p>
-            {SQUARES.map((sq) => {
-              const drop = sq.tempBefore - sq.tempAfter;
-              const isSel = sq.id === selected.id;
-              return (
-                <button
-                  key={sq.id}
-                  onClick={() => setSelected(sq)}
-                  className={`w-full text-left rounded-xl px-4 py-3 border transition-all ${
-                    isSel
-                      ? "bg-fg border-btn shadow-sm"
-                      : "border-transparent hover:bg-fg/60 hover:border-btn/30"
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <p className="font-medium text-sm text-text leading-tight">
-                        {sq.name}
-                      </p>
-                      <p className="text-xs text-text-light">{sq.city}</p>
-                    </div>
-                    <span
-                      className="text-xs font-semibold px-2 py-0.5 rounded-full flex-shrink-0"
-                      style={{
-                        background: tempToColor(
-                          mode === "before" ? sq.tempBefore : sq.tempAfter,
-                          0.25
-                        ),
-                        color: "#2e3a1f",
-                      }}
-                    >
-                      {mode === "before" ? sq.tempBefore : sq.tempAfter}°C
-                    </span>
-                  </div>
-                  {isSel && (
-                    <div className="mt-2 flex items-center gap-1.5">
-                      <span className="text-xs bg-btn/30 text-text-mid rounded-full px-2 py-0.5">
-                        −{drop}°C
-                      </span>
-                      <span className="text-xs text-text-light">{sq.year}</span>
-                    </div>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Selected detail panel */}
-          <div className="border-t border-btn/30 p-4 bg-fg/50 flex-shrink-0">
-            <div className="flex items-start justify-between mb-3">
-              <div>
-                <h2 className="font-display text-lg text-text leading-tight">
-                  {selected.name}
-                </h2>
-                <p className="text-xs text-text-light">{selected.city} · {selected.year}</p>
+      {mapReady && (
+        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-[1000] flex items-center gap-2">
+          {mode === "idle" && (
+            <button onClick={startDrawing}
+              className="flex items-center gap-2 bg-bg/95 backdrop-blur-md border border-btn/50 rounded-2xl px-5 py-3 shadow-lg hover:border-btn transition-all text-sm font-medium text-text">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="flex-shrink-0">
+                <path d="M2 14L6 10M6 10L2 2L14 6L8 8L6 10Z" stroke="#2e3a1f" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+              </svg>
+              Draw area
+            </button>
+          )}
+          {mode === "drawing" && (
+            <>
+              <div className="bg-bg/95 backdrop-blur-md border border-btn/40 rounded-2xl px-5 py-3 shadow-lg text-sm text-text-mid">
+                {pointCount === 0 && "Click on the map to place first point"}
+                {pointCount === 1 && "Click to add more points"}
+                {pointCount === 2 && "Keep clicking to add points"}
+                {pointCount >= 3 && "Click the first point to finish"}
               </div>
-              <div
-                className="text-center px-3 py-2 rounded-xl"
-                style={{ background: tempToColor(currentTemp, 0.2) }}
-              >
-                <p className="font-display text-2xl text-text leading-none">{currentTemp}°</p>
-                <p className="text-xs text-text-light">{tempLabel(currentTemp)}</p>
-              </div>
-            </div>
-
-            <p className="text-xs text-text-mid leading-relaxed mb-4">
-              {selected.description}
-            </p>
-
-            {/* Before / after comparison row */}
-            <div className="grid grid-cols-2 gap-2 mb-4">
-              <div className="bg-bg rounded-lg p-2.5 text-center border border-btn/20">
-                <p className="text-xs text-text-light uppercase tracking-wide mb-0.5">Before</p>
-                <p className="font-display text-xl" style={{ color: tempToColor(selected.tempBefore, 1).replace("rgba", "rgb").replace(/,[\d.]+\)/, ")") }}>
-                  {selected.tempBefore}°C
-                </p>
-              </div>
-              <div className="bg-bg rounded-lg p-2.5 text-center border border-btn/20">
-                <p className="text-xs text-text-light uppercase tracking-wide mb-0.5">After</p>
-                <p className="font-display text-xl" style={{ color: tempToColor(selected.tempAfter, 1).replace("rgba", "rgb").replace(/,[\d.]+\)/, ")") }}>
-                  {selected.tempAfter}°C
-                </p>
-              </div>
-            </div>
-
-            {/* Temp drop bar */}
-            <div className="mb-4">
-              <div className="flex justify-between text-xs text-text-light mb-1">
-                <span>Temperature reduction</span>
-                <span className="font-semibold text-btn-dark">−{tempDrop}°C</span>
-              </div>
-              <div className="h-2 rounded-full bg-bg border border-btn/30 overflow-hidden">
-                <div
-                  className="h-full rounded-full bg-btn transition-all duration-700"
-                  style={{ width: `${(tempDrop / 15) * 100}%` }}
-                />
-              </div>
-            </div>
-
-            {/* Stats */}
-            <div className="grid grid-cols-2 gap-2 mb-4">
-              <div className="bg-bg rounded-lg p-2.5 border border-btn/20">
-                <p className="text-xs text-text-light">Trees added</p>
-                <p className="font-display text-lg text-text">🌳 {selected.treesAdded}</p>
-              </div>
-              <div className="bg-bg rounded-lg p-2.5 border border-btn/20">
-                <p className="text-xs text-text-light">Area cooled</p>
-                <p className="font-display text-lg text-text">{(selected.m2Cooled / 1000).toFixed(1)}k m²</p>
-              </div>
-            </div>
-
-            {/* interventions */}
-            <div>
-              <p className="text-xs text-text-light uppercase tracking-wide mb-2">Interventions</p>
-              <div className="flex flex-wrap gap-1.5">
-                {selected.interventions.map((iv: string) => (
-                  <span
-                    key={iv}
-                    className="text-xs bg-bg border border-btn/30 text-text-mid rounded-full px-2.5 py-1"
-                  >
-                    {INTERVENTION_ICONS[iv] ?? "•"} {iv}
-                  </span>
-                ))}
-              </div>
-            </div>
-          </div>
-        </aside>
-
-        {/* ── Map + slider ── */}
-        <div className="flex-1 relative overflow-hidden">
-
-          {/* Map container */}
-          <div ref={mapRef} className="absolute inset-0" />
-
-          {/* Before/After slider track */}
-          <div
-            ref={sliderRef}
-            className="absolute bottom-8 left-1/2 -translate-x-1/2 z-[1000] w-72 select-none"
-            onMouseDown={(e) => {
-              isDragging.current = true;
-              handleSliderMove(e.clientX);
-            }}
-            onTouchStart={(e) => {
-              isDragging.current = true;
-              handleSliderMove(e.touches[0].clientX);
-            }}
-          >
-            <div className="bg-bg/90 backdrop-blur-sm border border-btn/40 rounded-2xl px-4 py-3 shadow-lg">
-              <div className="flex justify-between text-xs text-text-light mb-2 font-medium">
-                <span className="text-orange-500 font-semibold">🔥 Before</span>
-                <span className="text-text-mid">Drag to compare</span>
-                <span className="text-btn-dark font-semibold">🌿 After</span>
-              </div>
-              <div className="relative h-6 flex items-center cursor-grab active:cursor-grabbing">
-                {/* Track */}
-                <div className="w-full h-2 rounded-full overflow-hidden flex">
-                  <div className="h-full rounded-l-full" style={{
-                    width: `${sliderValue}%`,
-                    background: "linear-gradient(to right, rgba(220,100,60,0.6), rgba(220,100,60,0.3))"
-                  }} />
-                  <div className="h-full rounded-r-full flex-1" style={{
-                    background: "linear-gradient(to right, rgba(172,193,138,0.4), rgba(138,163,110,0.7))"
-                  }} />
-                </div>
-                {/* Thumb */}
-                <div
-                  className="absolute w-6 h-6 rounded-full bg-text border-2 border-bg shadow-md transition-transform hover:scale-110"
-                  style={{ left: `calc(${sliderValue}% - 12px)` }}
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Legend */}
-          <div className="absolute top-4 right-4 z-[1000] bg-bg/90 backdrop-blur-sm border border-btn/30 rounded-xl p-3 shadow">
-            <p className="text-xs text-text-light uppercase tracking-widest mb-2">
-              Surface temp
-            </p>
-            {[
-              { label: "Cool  <32°C", color: tempToColor(30) },
-              { label: "Warm 32–38°C", color: tempToColor(35) },
-              { label: "Hot  38–44°C", color: tempToColor(41) },
-              { label: "Extreme >44°C", color: tempToColor(49) },
-            ].map(({ label, color }) => (
-              <div key={label} className="flex items-center gap-2 mb-1.5 last:mb-0">
-                <div className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: color }} />
-                <span className="text-xs text-text-mid">{label}</span>
-              </div>
-            ))}
-          </div>
-
-          {/* Loading overlay */}
-          {!mapReady && (
-            <div className="absolute inset-0 bg-bg flex items-center justify-center z-[2000]">
-              <div className="text-center">
-                <div className="text-4xl mb-3 animate-bounce">🌿</div>
-                <p className="font-display text-xl text-text">Loading map…</p>
-                <p className="text-xs text-text-light mt-1">Fetching thermal data</p>
-              </div>
-            </div>
+              <button onMouseDown={(e) => { e.stopPropagation(); clearAll(); }}
+                className="flex items-center gap-2 bg-bg/95 backdrop-blur-md border border-btn/40 rounded-2xl px-4 py-3 shadow-lg hover:border-btn transition-all text-sm text-text-mid">
+                ✕ Cancel
+              </button>
+            </>
           )}
         </div>
-      </div>
+      )}
+
+      {invalidMsg && (
+        <div className="absolute top-5 left-1/2 -translate-x-1/2 z-[1000] bg-text text-bg text-sm px-5 py-3 rounded-2xl shadow-lg pointer-events-none">
+          ✕ {invalidMsg}
+        </div>
+      )}
+
+      {!mapReady && (
+        <div className="absolute inset-0 bg-bg flex items-center justify-center z-[2000]">
+          <div className="text-center">
+            <div className="text-5xl mb-4 animate-bounce">🌿</div>
+            <p className="font-display text-2xl text-text">Loading map…</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Root: controls which "page" is shown ─────────────────────────────────────
+export default function App() {
+  const [page, setPage] = useState<AppPage>("map");
+  const [selectedArea, setSelectedArea] = useState<SelectedArea | null>(null);
+
+  function handleAreaSelected(area: SelectedArea) {
+    setSelectedArea(area);
+    setPage("results");
+  }
+
+  function handleBack() {
+    setPage("map");
+  }
+
+  return (
+    <div style={{ position: "relative", width: "100%", height: "100%" }}>
+      <MapView onAreaSelected={handleAreaSelected} />
+      {page === "results" && selectedArea && (
+        <ResultsPage area={selectedArea} onBack={handleBack} />
+      )}
     </div>
   );
 }
