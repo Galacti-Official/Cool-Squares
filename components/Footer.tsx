@@ -4,7 +4,7 @@ export default function Footer() {
       <div className="max-w-5xl mx-auto px-6 flex flex-wrap items-center justify-between gap-4">
         <span className="font-display text-xl text-text">CoolSquares</span>
         <p className="text-xs text-text-light">
-          © 2026 CoolSquares Project · Powered by Galacti       </p>
+          © 2026 CoolSquares Project · Ochlazování městských náměstí        </p>
       </div>
     </footer>
   );
