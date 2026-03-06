@@ -31,7 +31,7 @@ export const ITEMS: Item[] = [
     lifespan: "10–15 let",
     material: "Dřevo, hliník, nerezová ocel",
     weight: "2 000 kg (s půdou a plně zavlažené)",
-    dimensions: "3 × 2 × 1 m",
+    dimensions: "3 × 2 × 2 m",
     waterNeeded: true,
     tags: ["modulární", "stěna", "venkovní"],
     specs: {

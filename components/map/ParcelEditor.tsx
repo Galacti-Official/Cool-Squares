@@ -443,6 +443,8 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
   const pixelsPerMetreRef = useRef(1);
   const draggingCatalogItem = useRef<any>(null);
   const satelliteTilesRef = useRef<SatelliteTile[]>([]);
+  const rotateHandleRef = useRef<{ id: string; x: number; y: number; radius: number } | null>(null);
+  const rotateDragRef = useRef<{ id: string; angleOffsetDeg: number } | null>(null);
 
   const vp = useRef<Viewport>({ x: 0, y: 0, zoom: 1, angle: 0 });
   const vpInitialised = useRef(false);
@@ -551,7 +553,7 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
       zoom,
       angle: 0,
     };
-    pixelsPerMetreRef.current = pixelsPerMetre * zoom;
+    pixelsPerMetreRef.current = pixelsPerMetre;
     setZoomDisplay(Math.round(zoom * 100));
   }
 
@@ -605,7 +607,7 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
       ctx.setTransform(zoom * cos, zoom * sin, -zoom * sin, zoom * cos, vpX, vpY);
 
       const { project, pixelsPerMetre } = makeProjection(area.points, w, h, 80);
-      pixelsPerMetreRef.current = pixelsPerMetre * zoom;
+      pixelsPerMetreRef.current = pixelsPerMetre;
       const worldPts = area.points.map(project);
 
       const big = 999999;
@@ -754,7 +756,47 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
           el.id === hoveredIdRef.current);
       });
 
-      ctx.restore(); 
+      ctx.restore();
+
+      rotateHandleRef.current = null;
+      if (selectedIdsRef.current.length === 1) {
+        const selectedId = selectedIdsRef.current[0];
+        const selectedEl = elementsRef.current.find((el) => el.id === selectedId);
+        if (selectedEl) {
+          const cx = selectedEl.x + selectedEl.wPx / 2;
+          const cy = selectedEl.y + selectedEl.hPx / 2;
+          const theta = ((selectedEl.rotation || 0) * Math.PI) / 180;
+          const orbitDist = selectedEl.hPx / 2 + 28;
+          const hxWorld = cx + Math.sin(theta) * orbitDist;
+          const hyWorld = cy - Math.cos(theta) * orbitDist;
+          const [hx, hy] = worldToScreen(hxWorld, hyWorld);
+          const hr = 12;
+
+          rotateHandleRef.current = { id: selectedId, x: hx, y: hy, radius: hr };
+
+          ctx.save();
+          const [cxScreen, cyScreen] = worldToScreen(cx, cy);
+          ctx.strokeStyle = "#2e3a1f66";
+          ctx.lineWidth = 1.2;
+          ctx.beginPath();
+          ctx.moveTo(cxScreen, cyScreen);
+          ctx.lineTo(hx, hy);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.arc(hx, hy, hr, 0, Math.PI * 2);
+          ctx.fillStyle = "#F4F5E0";
+          ctx.fill();
+          ctx.strokeStyle = "#2e3a1f";
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+          ctx.fillStyle = "#2e3a1f";
+          ctx.font = "12px sans-serif";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText("↻", hx, hy + 0.5);
+          ctx.restore();
+        }
+      }
 
       raf = requestAnimationFrame(render);
     }
@@ -896,6 +938,28 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
     };
   }
 
+  function normalizeDeg(deg: number): number {
+    return ((deg % 360) + 360) % 360;
+  }
+
+  function pointerAngleDegFromCenter(cx: number, cy: number, sx: number, sy: number): number {
+    return normalizeDeg((Math.atan2(sx - cx, -(sy - cy)) * 180) / Math.PI);
+  }
+
+  function startRotateDrag(id: string, sx: number, sy: number) {
+    const el = elementsRef.current.find((item) => item.id === id);
+    if (!el) return;
+    const [cx, cy] = worldToScreen(el.x + el.wPx / 2, el.y + el.hPx / 2);
+    const pointerDeg = pointerAngleDegFromCenter(cx, cy, sx, sy);
+    const currentDeg = normalizeDeg(el.rotation || 0);
+    rotateDragRef.current = { id, angleOffsetDeg: pointerDeg - currentDeg };
+    if (!spaceDown.current && canvasRef.current) canvasRef.current.style.cursor = "grabbing";
+  }
+
+  function stopRotateDrag() {
+    rotateDragRef.current = null;
+  }
+
   function hitTest(wx: number, wy: number): PlacedElement | null {
     const elems = [...elementsRef.current].reverse();
     for (const el of elems) {
@@ -974,6 +1038,16 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
 
     if (e.button !== 0) return;
 
+    const handle = rotateHandleRef.current;
+    if (handle) {
+      const dx = sx - handle.x;
+      const dy = sy - handle.y;
+      if (Math.sqrt(dx * dx + dy * dy) <= handle.radius + 2) {
+        startRotateDrag(handle.id, sx, sy);
+        return;
+      }
+    }
+
     const [wx, wy] = screenToWorld(sx, sy);
     const hit = hitTestScreen(sx, sy);
     if (hit) {
@@ -1015,6 +1089,23 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
       return;
     }
 
+    if (rotateDragRef.current) {
+      const { id, angleOffsetDeg } = rotateDragRef.current;
+      const el = elementsRef.current.find((item) => item.id === id);
+      if (!el) {
+        stopRotateDrag();
+        return;
+      }
+      const [cx, cy] = worldToScreen(el.x + el.wPx / 2, el.y + el.hPx / 2);
+      const pointerDeg = pointerAngleDegFromCenter(cx, cy, sx, sy);
+      const nextDeg = normalizeDeg(pointerDeg - angleOffsetDeg);
+      setElements((prev) => prev.map((item) => (
+        item.id === id ? { ...item, rotation: nextDeg } : item
+      )));
+      if (!spaceDown.current) canvasRef.current!.style.cursor = "grabbing";
+      return;
+    }
+
     if (dragState.current) {
       const { ids, startWorldX, startWorldY, startPositions } = dragState.current;
       const [wx, wy] = screenToWorld(sx, sy);
@@ -1044,6 +1135,17 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
       return;
     }
 
+    const handle = rotateHandleRef.current;
+    if (handle) {
+      const dx = sx - handle.x;
+      const dy = sy - handle.y;
+      if (Math.sqrt(dx * dx + dy * dy) <= handle.radius + 2) {
+        setHoveredId(null);
+        if (!spaceDown.current) canvasRef.current!.style.cursor = "pointer";
+        return;
+      }
+    }
+
     const [wx, wy] = screenToWorld(sx, sy);
     const hit = hitTestScreen(sx, sy) ?? hitTest(wx, wy);
     setHoveredId(hit ? hit.id : null);
@@ -1053,6 +1155,7 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
   }
 
   function onMouseUp(e: React.MouseEvent) {
+    stopRotateDrag();
     const [sx, sy] = getCanvasXY(e);
     if (panState.current) {
       panState.current = null;
@@ -1080,6 +1183,22 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
     marqueeState.current = null;
     setSelectionBox(null);
   }
+
+  useEffect(() => {
+    function onWindowMouseUp() {
+      stopRotateDrag();
+      if (panState.current) {
+        panState.current = null;
+        if (canvasRef.current) {
+          canvasRef.current.style.cursor = spaceDown.current ? "grab" : "default";
+        }
+      }
+      dragState.current = null;
+    }
+
+    window.addEventListener("mouseup", onWindowMouseUp);
+    return () => window.removeEventListener("mouseup", onWindowMouseUp);
+  }, []);
 
   function onCatalogDragStart(e: React.DragEvent, item: any) {
     draggingCatalogItem.current = item;
