@@ -1,12 +1,11 @@
 import MapView from "@/components/map/MapView";
-import Navbar from "@/components/Navbar";
+import Navbar2 from "@/components/Navbar2";
 import Footer from "@/components/Footer";
-import type { Metadata } from "next";
 
 export default function MapPage() {
   return (
     <>
-      <Navbar />
+      <Navbar2 />
       <main>
         <MapView />
       </main>
