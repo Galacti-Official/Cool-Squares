@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Mode = "idle" | "drawing";
-type AppPage = "map" | "results";
+type AppPage = "map" | "results" ;
 
 interface SelectedArea {
   points: [number, number][];
@@ -44,7 +44,7 @@ function closingWouldSelfIntersect(points: [number, number][]): boolean {
   return false;
 }
 
-// Shoelace formula — returns sq km (approximate, good enough for CZ scale)
+// Shoelace formula
 function computeAreaSqKm(points: [number, number][]): number {
   const R = 6371;
   let area = 0;
@@ -104,10 +104,10 @@ function MiniMap({ area }: { area: SelectedArea }) {
 
 // ─── Results / detail page ────────────────────────────────────────────────────
 const NAV_ITEMS = [
-  { id: "overview", label: "Overview", icon: "◈" },
-  { id: "land", label: "Land use", icon: "⬡" },
-  { id: "climate", label: "Climate", icon: "◌" },
-  { id: "infra", label: "Infrastructure", icon: "⊞" },
+  { id: "overview", label: "Přehled", icon: "◈" },
+  { id: "land", label: "Využití půdy", icon: "⬡" },
+  { id: "climate", label: "Klima", icon: "◌" },
+  { id: "infra", label: "Infrastruktura", icon: "⊞" },
   { id: "export", label: "Export", icon: "↗" },
 ];
 
@@ -160,12 +160,12 @@ function ResultsPage({ area, onBack }: { area: SelectedArea; onBack: () => void 
           }}
         >
           <span style={{ fontSize: 17, lineHeight: 1 }}>←</span>
-          <span>Back to map</span>
+          <span>Zpět na mapu</span>
         </button>
 
         <div style={{ flex: 1, padding: "0 24px", display: "flex", alignItems: "center", gap: 10 }}>
           <span style={{ fontSize: 11, letterSpacing: "0.12em", color: "#2e3a1f88", textTransform: "uppercase" }}>
-            Selected area
+            Zvolená oblast
           </span>
           <span style={{ color: "#2e3a1f44", fontSize: 11 }}>·</span>
           <span style={{ fontSize: 13, color: "#2e3a1f", fontStyle: "italic" }}>
@@ -173,13 +173,13 @@ function ResultsPage({ area, onBack }: { area: SelectedArea; onBack: () => void 
           </span>
           <span style={{ color: "#2e3a1f44", fontSize: 11 }}>·</span>
           <span style={{ fontSize: 13, color: "#2e3a1f99" }}>
-            {points.length} vertices
+            {points.length} vrcholů
           </span>
         </div>
 
         {/* Right actions — placeholders */}
         <div style={{ display: "flex", alignItems: "center", height: "100%", borderLeft: "1.5px solid #2e3a1f22" }}>
-          {["Share", "Save"].map((label) => (
+          {["Sdílet", "Uložit"].map((label) => (
             <button
               key={label}
               style={{
@@ -233,10 +233,10 @@ function ResultsPage({ area, onBack }: { area: SelectedArea; onBack: () => void 
                 marginBottom: 6, lineHeight: 1.2,
                 fontStyle: "italic",
               }}>
-                Custom area
+                Vlastní oblast
               </h1>
               <p style={{ fontSize: 13, color: "#2e3a1f77", marginBottom: 36, letterSpacing: "0.04em" }}>
-                Drawn on Czech Republic · {new Date().toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}
+                Nakresleno v České republice · {new Date().toLocaleDateString("cs-CZ", { day: "numeric", month: "long", year: "numeric" })}
               </p>
 
               {/* Map preview + stats row */}
@@ -252,12 +252,12 @@ function ResultsPage({ area, onBack }: { area: SelectedArea; onBack: () => void 
                 {/* Stats grid */}
                 <div style={{ flex: 1, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1, background: "#2e3a1f18", border: "1.5px solid #2e3a1f22", borderRadius: 4, overflow: "hidden" }}>
                   {[
-                    { label: "Total area", value: areaSqKm < 1 ? `${(areaSqKm * 100).toFixed(1)} ha` : `${areaSqKm.toFixed(1)} km²` },
-                    { label: "Vertices", value: points.length },
-                    { label: "Width", value: `~${widthKm} km` },
-                    { label: "Height", value: `~${heightKm} km` },
-                    { label: "Centre lat", value: `${centerLat}° N` },
-                    { label: "Centre lng", value: `${centerLng}° E` },
+                    { label: "Celková plocha", value: areaSqKm < 1 ? `${(areaSqKm * 100).toFixed(1)} ha` : `${areaSqKm.toFixed(1)} km²` },
+                    { label: "Počet vrcholů", value: points.length },
+                    { label: "Šířka", value: `~${widthKm} km` },
+                    { label: "Výška", value: `~${heightKm} km` },
+                    { label: "Střední šířka", value: `${centerLat}° N` },
+                    { label: "Střední délka", value: `${centerLng}° E` },
                   ].map(({ label, value }) => (
                     <div key={label} style={{ background: "#F4F5E0", padding: "16px 20px" }}>
                       <div style={{ fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "#2e3a1f66", marginBottom: 6 }}>{label}</div>
@@ -268,7 +268,7 @@ function ResultsPage({ area, onBack }: { area: SelectedArea; onBack: () => void 
               </div>
 
               {/* Placeholder sections */}
-              {["Land cover summary", "Elevation profile", "Administrative units"].map((title, idx) => (
+              {["Souhrn pokrytí půdy", "Profil nadmořské výšky", "Správní jednotky"].map((title, idx) => (
                 <div key={title} style={{
                   border: "1.5px solid #2e3a1f22", borderRadius: 4,
                   marginBottom: 16, overflow: "hidden",
@@ -278,13 +278,13 @@ function ResultsPage({ area, onBack }: { area: SelectedArea; onBack: () => void 
                     display: "flex", alignItems: "center", justifyContent: "space-between",
                   }}>
                     <span style={{ fontSize: 13, color: "#2e3a1f", letterSpacing: "0.04em" }}>{title}</span>
-                    <span style={{ fontSize: 11, color: "#2e3a1f44", letterSpacing: "0.08em" }}>COMING SOON</span>
+                    <span style={{ fontSize: 11, color: "#2e3a1f44", letterSpacing: "0.08em" }}>BRZY</span>
                   </div>
                   <div style={{
                     height: 80, background: "repeating-linear-gradient(90deg, #2e3a1f08 0px, #2e3a1f08 1px, transparent 1px, transparent 32px), repeating-linear-gradient(0deg, #2e3a1f08 0px, #2e3a1f08 1px, transparent 1px, transparent 32px)",
                     display: "flex", alignItems: "center", justifyContent: "center",
                   }}>
-                    <span style={{ fontSize: 12, color: "#2e3a1f33", fontStyle: "italic" }}>Data will appear here</span>
+                    <span style={{ fontSize: 12, color: "#2e3a1f33", fontStyle: "italic" }}>Data se zde objeví</span>
                   </div>
                 </div>
               ))}
@@ -300,7 +300,7 @@ function ResultsPage({ area, onBack }: { area: SelectedArea; onBack: () => void 
                 {NAV_ITEMS.find(n => n.id === activeTab)?.label}
               </h1>
               <p style={{ fontSize: 13, color: "#2e3a1f77", marginBottom: 36, letterSpacing: "0.04em" }}>
-                This section is under construction.
+                Tato sekce je ve výstavbě.
               </p>
               <div style={{
                 border: "1.5px dashed #2e3a1f33", borderRadius: 4,
@@ -310,7 +310,7 @@ function ResultsPage({ area, onBack }: { area: SelectedArea; onBack: () => void 
                   {NAV_ITEMS.find(n => n.id === activeTab)?.icon}
                 </div>
                 <p style={{ fontSize: 14, color: "#2e3a1f55", fontStyle: "italic" }}>
-                  {NAV_ITEMS.find(n => n.id === activeTab)?.label} data coming soon
+                  {NAV_ITEMS.find(n => n.id === activeTab)?.label} - data se brzy objeví
                 </p>
               </div>
             </div>
