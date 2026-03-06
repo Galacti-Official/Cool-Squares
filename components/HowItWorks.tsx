@@ -1,20 +1,20 @@
 const steps = [
   {
-    title: "Thermal audit",
-    desc: "We map surface temperatures with drone-mounted thermal cameras to identify hot spots and shade deficits.",
+    title: "jmeno",
+    desc: "nejakej popis",
   },
   {
-    title: "Climate modelling",
-    desc: "Site-specific simulations test Robotovention scenarios before a single euro is committed to construction.",
+    title: "jmeno",
+    desc: "nejakej popis",
   },
   {
-    title: "Co-design workshop",
-    desc: "Residents, city planners, and landscape architects shape the final design together over two public sessions.",
+    title: "jmeno",
+    desc: "nejakej popis",
   },
   {
-    title: "Install & monitor",
-    desc: "Implementation is phased to minimise disruption. IoT sensors track outcomes against baseline for 12 months.",
-  },
+    title: "jmeno",
+    desc: "nejakej popis",
+  }
 ];
 
 export default function HowItWorks() {
@@ -23,10 +23,10 @@ export default function HowItWorks() {
       <div className="max-w-5xl mx-auto px-6">
         <div className="text-center mb-14">
           <h2 className="font-display text-4xl md:text-5xl text-text mb-3">
-            From assessment to cool square
+            Jak to funguje?
           </h2>
           <p className="text-text-mid max-w-md mx-auto">
-            Our process is rigorous, collaborative, and built around measurable outcomes.
+            popisek idk
           </p>
         </div>
 

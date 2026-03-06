@@ -6,27 +6,27 @@ const features = [
   },
   {
     icon: "💧",
-    title: "dalsi nazev vole",
+    title: "jmeno",
     desc: "nejake shitky",
   },
   {
     icon: "🪨",
-    title: "picovina 3",
-    desc: "jirikova picovina",
+    title: "jmeno",
+    desc: "desc",
   },
   {
     icon: "⛺",
-    title: "idk",
+    title: "jmeno",
     desc: "nejake shitky",
   },
   {
     icon: "🌿",
-    title: "gawegarhwryjy5t",
+    title: "jmeno",
     desc: "aegewgawegaet",
   },
   {
     icon: "📡",
-    title: "fioajewof",
+    title: "jmeno",
     desc: "aefawefaewfa"
   }
 ];
@@ -40,7 +40,7 @@ export default function Features() {
             Lorem ipsum dolor sit amet
           </h2>
           <p className="text-text-mid max-w-md mx-auto">
-            
+            idk
           </p>
         </div>
 

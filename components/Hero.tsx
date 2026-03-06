@@ -1,16 +1,12 @@
 export default function Hero() {
   return (
     <section className="relative py-28 overflow-hidden">
-      {/* Background blobs */}
-      <div className="pointer-events-none absolute -top-32 -right-36 w-[520px] h-[520px] rounded-full bg-[radial-gradient(circle,#d4e8a8,transparent_70%)] animate-drift-slow" />
-      <div className="pointer-events-none absolute -bottom-16 -left-20 w-[340px] h-[340px] rounded-full bg-[radial-gradient(circle,#c8dba0,transparent_70%)] animate-drift-rev" />
-
       <div className="relative z-10 max-w-5xl mx-auto px-6 flex items-center">
         {/* Left content */}
         <div className="max-w-xl">
           <h1 className="font-display text-5xl md:text-[4.2rem] leading-[1.1] text-text mb-5">
-            Moderní řešení pro {" "}
-            <em className="italic text-text-light">problémy moderního města</em>
+            Moderní řešení pro problémy {" "}
+            <em className="italic text-text-light">moderního města</em>
           </h1>
 
           <p className="text-text-mid text-lg max-w-md mb-10 leading-relaxed">
