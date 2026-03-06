@@ -1,6 +1,14 @@
 export default function Hero() {
   return (
+<<<<<<< Updated upstream
     <section className="relative py-28 overflow-hidden">
+=======
+    <section className="relative py-28 overflow-hidden snap-start">
+      {/* Background blobs */}
+      <div className="pointer-events-none absolute -top-32 -right-36 w-[520px] h-[520px] rounded-full bg-[radial-gradient(circle,#d4e8a8,transparent_70%)] animate-drift-slow" />
+      <div className="pointer-events-none absolute -bottom-16 -left-20 w-[340px] h-[340px] rounded-full bg-[radial-gradient(circle,#c8dba0,transparent_70%)] animate-drift-rev" />
+
+>>>>>>> Stashed changes
       <div className="relative z-10 max-w-5xl mx-auto px-6 flex items-center">
         {/* Left content */}
         <div className="max-w-xl">

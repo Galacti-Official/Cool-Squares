@@ -1,6 +1,6 @@
 export default function CtaBanner() {
   return (
-    <section id="contact" className="py-20">
+    <section id="contact" className="py-20 snap-start">
       <div className="max-w-5xl mx-auto px-6">
         <div>
           <div className="bg-gradient-to-br from-btn to-[#c8dba0] rounded-3xl px-10 py-14 flex flex-col md:flex-row items-center justify-between gap-8">

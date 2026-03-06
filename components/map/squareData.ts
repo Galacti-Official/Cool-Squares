@@ -1,4 +1,3 @@
-// a single urban square and the features applied to it
 export interface Square {
   id: string;
   name: string;

@@ -9,7 +9,7 @@ export default function Home() {
   return (
     <>
       <Navbar />
-      <main>
+      <main className="snap-y snap-mandatory">
         <Hero />
         <Features />
         <HowItWorks />
