@@ -6,8 +6,8 @@ const features = [
   },
   {
     icon: "💧",
-    title: "jmeno",
-    desc: "nejake shitky",
+    title: "Květináče s auto-zavlažováním",
+    desc: "Zavlažovací systém s využitím dešťové vody",
   },
   {
     icon: "📡",
