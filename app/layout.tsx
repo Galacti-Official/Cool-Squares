@@ -9,7 +9,7 @@ const ptSans = PT_Sans({
 
 export const metadata: Metadata = {
 	title: "CoolSquares",
-	description: ""
+	description: "Aplikace pro plánování ochlazení města a analýzu okolí v České republice."
 };
 
 export default function RootLayout({
@@ -18,7 +18,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${ptSans.className} scroll-smooth`}>
+    <html lang="cs" className={`${ptSans.className} scroll-smooth`}>
       <body className="flex flex-col font-sans">
         {/* Page content */}
         <main>
