@@ -9,8 +9,8 @@ export default function Hero() {
         {/* Left content */}
         <div className="max-w-xl">
           <h1 className="font-display text-5xl md:text-[4.2rem] leading-[1.1] text-text mb-5">
-            Přetváření městských náměstí, aby byla {" "}
-            <em className="italic text-text-light">pěkně cool</em> zeleným způsobem
+            Moderní řešení pro {" "}
+            <em className="italic text-text-light">problémy moderního města</em>
           </h1>
 
           <p className="text-text-mid text-lg max-w-md mb-10 leading-relaxed">
@@ -28,7 +28,7 @@ export default function Hero() {
         </div>
 
         {/* Floating badge */}
-        <div className="hidden lg:block absolute right-[6%] top-1/2 -translate-y-1/2 bg-fg border-2 border-btn/60 rounded-3xl px-8 py-7 text-center animate-float shadow-[0_12px_40px_rgba(46,58,31,0.12)]">
+        <div className="hidden lg:block absolute right-[6%] top-1/2 -translate-y-1/2 bg-fg border-2 border-btn/60 rounded-3xl px-8 py-7 text-center shadow-[0_12px_40px_rgba(46,58,31,0.12)]">
           <p className="text-xs uppercase tracking-widest text-text-light mb-1">
             očekávaná teplotní redukce
           </p>
