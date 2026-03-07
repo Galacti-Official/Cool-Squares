@@ -4,9 +4,7 @@ import { useState, useMemo } from "react";
 import { ITEMS, CATEGORIES, type Item, type Category } from "./itemData";
 
 // ── Helpers ───────────────────────────────────────────
-type CostTier = "low" | "medium" | "high";
-
-const COST_COLOR: Record<CostTier, string> = {
+const COST_COLOR: Record<string, string> = {
   low: "bg-emerald-100 text-emerald-700",
   medium: "bg-amber-100 text-amber-700",
   high: "bg-red-100 text-red-700",
@@ -14,21 +12,6 @@ const COST_COLOR: Record<CostTier, string> = {
 const BADGE = "text-xs font-medium px-2.5 py-1 rounded-full";
 const COST_LABEL = { low: "Nízké", medium: "Střední", high: "Vysoké" } as const;
 const MAINT_LABEL = { low: "Nízká", medium: "Střední", high: "Vysoká" } as const;
-const COST_ICON: Record<CostTier, string> = { low: "💚", medium: "🟡", high: "🔴" };
-
-function getCostTier(cost: number): CostTier {
-  if (cost < 30000) return "low";
-  if (cost < 80000) return "medium";
-  return "high";
-}
-
-function formatCostCzk(cost: number): string {
-  return new Intl.NumberFormat("cs-CZ", {
-    style: "currency",
-    currency: "CZK",
-    maximumFractionDigits: 0,
-  }).format(cost);
-}
 
 function CoolingBar({ value }: { value: number }) {
   const pct = Math.min(100, (value / 8) * 100);
@@ -49,7 +32,6 @@ function CoolingBar({ value }: { value: number }) {
 
 // ── Item Card ─────────────────────────────────────────
 function ItemCard({ item, onClick }: { item: Item; onClick: () => void }) {
-  const costTier = getCostTier(item.cost);
   return (
     <button
       onClick={onClick}
@@ -72,8 +54,8 @@ function ItemCard({ item, onClick }: { item: Item; onClick: () => void }) {
       <CoolingBar value={item.coolingEffect} />
 
       <div className="flex items-center gap-2 mt-3 flex-wrap">
-        <span className={`${BADGE} ${COST_COLOR[costTier]}`}>
-          {COST_ICON[costTier]} Cena: {formatCostCzk(item.cost)} ({COST_LABEL[costTier]})
+        <span className={`${BADGE} ${COST_COLOR[item.cost]}`}>
+          {item.cost === "low" ? "💚" : item.cost === "medium" ? "🟡" : "🔴"} Cena: {COST_LABEL[item.cost]}
         </span>
         <span className={`${BADGE} bg-fg text-text-mid`}>
           🔧 Údržba: {MAINT_LABEL[item.maintenance]}
@@ -119,12 +101,12 @@ function DetailPanel({ item, onClose }: { item: Item; onClose: () => void }) {
 
           {/* Key metrics */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {[
-                { label: "Chladicí efekt", value: `−${item.coolingEffect}°C` },
-                { label: "Životnost", value: item.lifespan },
-                { label: "Cena", value: formatCostCzk(item.cost) },
-                { label: "Údržba", value: MAINT_LABEL[item.maintenance] },
-              ].map(({ label, value }) => (
+            {[
+              { label: "Chladicí efekt", value: `−${item.coolingEffect}°C` },
+              { label: "Životnost", value: item.lifespan },
+              { label: "Cena", value: COST_LABEL[item.cost] },
+              { label: "Údržba", value: MAINT_LABEL[item.maintenance] },
+            ].map(({ label, value }) => (
               <div key={label} className="bg-fg border border-btn/20 rounded-xl p-3 text-center">
                 <p className="text-xs text-text-light uppercase tracking-wide mb-1">{label}</p>
                 <p className="font-display text-lg text-text">{value}</p>
@@ -212,7 +194,8 @@ export default function EncyclopediaView() {
     return [...items].sort((a, b) => {
       if (sortBy === "cooling") return b.coolingEffect - a.coolingEffect;
       if (sortBy === "cost") {
-        return a.cost - b.cost;
+        const order = { low: 0, medium: 1, high: 2 };
+        return order[a.cost] - order[b.cost];
       }
       return a.name.localeCompare(b.name);
     });
