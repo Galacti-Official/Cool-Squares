@@ -309,7 +309,7 @@ function ItemTooltip({ item }: { item: Item }) {
   const price = costToPrice(item.cost);
   return (
     <div style={{
-      width: 220, background: "#F4F5E0", border: "1.5px solid #2e3a1f33",
+      width: 280, background: "#F4F5E0", border: "1.5px solid #2e3a1f33",
       borderRadius: 6, boxShadow: "0 4px 20px #2e3a1f22", padding: "14px 16px",
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
@@ -325,7 +325,7 @@ function ItemTooltip({ item }: { item: Item }) {
       {item.modelPath && (
         <div
           style={{
-            height: 100,
+            height: 150,
             marginBottom: 10,
             borderRadius: 6,
             overflow: "hidden",
@@ -333,7 +333,7 @@ function ItemTooltip({ item }: { item: Item }) {
             background: "radial-gradient(circle at 50% 40%, #ffffff 0%, #eef2df 65%, #e4e9cf 100%)",
           }}
         >
-          <StlPreview modelPath={item.modelPath} zoom={0.32} />
+          <StlPreview modelPath={item.modelPath} zoom={0.62} />
         </div>
       )}
 
@@ -418,7 +418,7 @@ function CatalogItem({ item, onDragStart }: { item: any; onDragStart: (e: React.
     function updateTooltipPos() {
       const rect = itemRef.current?.getBoundingClientRect();
       if (!rect) return;
-      const tooltipWidth = item.itemRef?.modelPath ? 220 : 240;
+      const tooltipWidth = item.itemRef?.modelPath ? 280 : 240;
       const viewportPadding = 8;
       const left = Math.min(
         rect.right + 8,

@@ -27,8 +27,8 @@ export default function Hero() {
           </div>
         </div>
 
-        <div className="hidden lg:block w-[520px] h-[520px] shrink-0 -mt-10">
-          <StlPreview modelPath={modelPath} zoom={1.1} />
+        <div className="hidden lg:block w-[430px] h-[430px] shrink-0 -mt-8">
+          <StlPreview modelPath={modelPath} zoom={0.9} />
         </div>
       </div>
     </section>
