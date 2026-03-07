@@ -3,7 +3,6 @@
 import { useState, useMemo } from "react";
 import { ITEMS, CATEGORIES, type Item, type Category } from "./itemData";
 
-// ── Helpers ───────────────────────────────────────────
 const COST_COLOR: Record<string, string> = {
   low: "bg-emerald-100 text-emerald-700",
   medium: "bg-amber-100 text-amber-700",
@@ -30,7 +29,6 @@ function CoolingBar({ value }: { value: number }) {
   );
 }
 
-// ── Item Card ─────────────────────────────────────────
 function ItemCard({ item, onClick }: { item: Item; onClick: () => void }) {
   return (
     <button
@@ -68,19 +66,15 @@ function ItemCard({ item, onClick }: { item: Item; onClick: () => void }) {
   );
 }
 
-// ── Detail Panel ──────────────────────────────────────
 function DetailPanel({ item, onClose }: { item: Item; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 sm:p-8">
-      {/* Backdrop */}
       <div
         className="absolute inset-0 bg-text/30 backdrop-blur-sm"
         onClick={onClose}
       />
 
-      {/* Panel */}
       <div className="relative bg-bg rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        {/* Header */}
         <div className="sticky top-0 bg-bg/95 backdrop-blur-md border-b border-btn/20 px-6 py-4 flex items-center gap-3 rounded-t-3xl">
           <span className="text-4xl">{item.emoji}</span>
           <div className="flex-1 min-w-0">
@@ -96,10 +90,8 @@ function DetailPanel({ item, onClose }: { item: Item; onClose: () => void }) {
         </div>
 
         <div className="p-6 space-y-6">
-          {/* Description */}
           <p className="text-text-mid leading-relaxed">{item.description}</p>
 
-          {/* Key metrics */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
               { label: "Chladicí efekt", value: `−${item.coolingEffect}°C` },
@@ -114,13 +106,11 @@ function DetailPanel({ item, onClose }: { item: Item; onClose: () => void }) {
             ))}
           </div>
 
-          {/* Cooling bar */}
           <div>
             <p className="text-xs uppercase tracking-widest text-text-light mb-2">Chladicí potenciál (max 8 °C)</p>
             <CoolingBar value={item.coolingEffect} />
           </div>
 
-          {/* Physical details */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {[
               { label: "Materiál", value: item.material },
@@ -135,7 +125,6 @@ function DetailPanel({ item, onClose }: { item: Item; onClose: () => void }) {
             ))}
           </div>
 
-          {/* Technical specs */}
           <div>
             <p className="text-xs uppercase tracking-widest text-text-light mb-3">Technické specifikace</p>
             <div className="rounded-xl border border-btn/20 overflow-hidden">
@@ -153,7 +142,6 @@ function DetailPanel({ item, onClose }: { item: Item; onClose: () => void }) {
             </div>
           </div>
 
-          {/* Tags */}
           <div className="flex flex-wrap gap-2">
             {item.tags.map((tag) => (
               <span key={tag} className={`${BADGE} bg-btn/20 text-text-mid`}>
@@ -167,7 +155,6 @@ function DetailPanel({ item, onClose }: { item: Item; onClose: () => void }) {
   );
 }
 
-// ── Main Page ─────────────────────────────────────────
 export default function EncyclopediaView() {
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState<Category | "Vše">("Vše");
@@ -204,7 +191,6 @@ export default function EncyclopediaView() {
   return (
     <div className="min-h-screen bg-fg/40">
 
-      {/* ── Page header ── */}
       <div className="bg-bg border-b border-btn/30">
         <div className="max-w-6xl mx-auto px-6 py-10">
           <p className="text-xs uppercase tracking-widest text-text-light mb-2">Referenční knihovna</p>
@@ -219,9 +205,7 @@ export default function EncyclopediaView() {
 
       <div className="max-w-6xl mx-auto px-6 py-8">
 
-        {/* ── Controls ── */}
         <div className="flex flex-col sm:flex-row gap-3 mb-6">
-          {/* Search */}
           <div className="relative flex-1">
             <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-light text-sm">🔍</span>
             <input
@@ -233,7 +217,6 @@ export default function EncyclopediaView() {
             />
           </div>
 
-          {/* Sort */}
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
@@ -245,7 +228,6 @@ export default function EncyclopediaView() {
           </select>
         </div>
 
-        {/* ── Category pills ── */}
         <div className="flex flex-wrap gap-2 mb-8">
           {(["Vše", ...CATEGORIES] as const).map((cat) => (
             <button
@@ -265,7 +247,6 @@ export default function EncyclopediaView() {
           ))}
         </div>
 
-        {/* ── Grid ── */}
         {filtered.length === 0 ? (
           <div className="text-center py-20 text-text-light">
             <p className="text-4xl mb-3">🔍</p>
@@ -284,7 +265,6 @@ export default function EncyclopediaView() {
         </p>
       </div>
 
-      {/* ── Detail panel ── */}
       {selected && (
         <DetailPanel item={selected} onClose={() => setSelected(null)} />
       )}

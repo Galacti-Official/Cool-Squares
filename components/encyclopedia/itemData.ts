@@ -1,5 +1,20 @@
 export type Category = "Květináče" | "Nádoby" | "Půdní pokryv" | "Vodní prvky" | "Posezení";
 
+export interface ItemDimensions {
+  width: number;
+  depth: number;
+  height?: number;
+}
+
+export function formatDimensions(dimensions: ItemDimensions): string {
+  const parts = [dimensions.width, dimensions.depth, dimensions.height].filter(
+    (value): value is number => typeof value === "number"
+  );
+  return `${parts
+    .map(value => value.toLocaleString("cs-CZ", { maximumFractionDigits: 2 }))
+    .join(" × ")} m`;
+}
+
 export interface Item {
   id: string;
   name: string;
@@ -13,10 +28,19 @@ export interface Item {
   material: string;
   weight: string;          
   dimensions: string;
+  modelPath?: string;
+  dimensionsM?: ItemDimensions;
   waterNeeded: boolean;
   tags: string[];
   specs: Record<string, string>;
 }
+
+const rostlinnaStenaDimensions: ItemDimensions = {
+  width: 2,
+  depth: 1.8,
+  height: 3,
+};
+const rostlinnaBranaModelPath = encodeURI("/Rostliná brána.stl");
 
 export const ITEMS: Item[] = [
   {
@@ -31,7 +55,9 @@ export const ITEMS: Item[] = [
     lifespan: "10–15 let",
     material: "Dřevo, hliník, nerezová ocel",
     weight: "2 000 kg (s půdou a plně zavlažené)",
-    dimensions: "3 × 2 × 2 m",
+    dimensions: formatDimensions(rostlinnaStenaDimensions),
+    modelPath: rostlinnaBranaModelPath,
+    dimensionsM: rostlinnaStenaDimensions,
     waterNeeded: true,
     tags: ["modulární", "stěna", "venkovní"],
     specs: {

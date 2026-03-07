@@ -20,11 +20,6 @@ const config: Config = {
         },
       },
       fontFamily: {
-        // use the PT Sans font provided by next/font/google; `ptSans.className`
-        // injects a `--font-pt-sans` variable we can reference here.  All
-        // Tailwind utilities that use `font-display` or `font-body` will
-        // resolve to PT Sans, which ultimately makes the entire site use the
-        // same typeface.
         display: ["var(--font-pt-sans)", "sans-serif"],
         body: ["var(--font-pt-sans)", "sans-serif"],
       },

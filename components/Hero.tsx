@@ -1,12 +1,12 @@
 import StlPreview from "./StlPreview";
+import { ITEMS } from "./encyclopedia/itemData";
 
 export default function Hero() {
-  const modelPath = encodeURI("/Rostliná brána.stl");
+  const modelPath = ITEMS[0]?.modelPath ?? encodeURI("/Rostliná brána.stl");
 
   return (
     <section className="relative py-28 overflow-hidden snap-start">
       <div className="relative z-10 max-w-6xl mx-auto px-6 flex items-center justify-between gap-10">
-        {/* Left content */}
         <div className="max-w-xl">
           <h1 className="font-display text-5xl md:text-[4.2rem] leading-[1.1] text-text mb-5">
             Moderní řešení pro problémy {" "}
@@ -27,8 +27,8 @@ export default function Hero() {
           </div>
         </div>
 
-        <div className="hidden lg:block w-[420px] shrink-0 -mt-8">
-          <StlPreview modelPath={modelPath} />
+        <div className="hidden lg:block w-[520px] h-[520px] shrink-0 -mt-10">
+          <StlPreview modelPath={modelPath} zoom={1.1} />
         </div>
       </div>
     </section>

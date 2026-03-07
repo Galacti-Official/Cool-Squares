@@ -1,8 +1,12 @@
 "use client";
 
+import type * as React from "react";
 import { useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
+import { ITEMS, type Item } from "../encyclopedia/itemData";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+const StlPreview = dynamic(() => import("../StlPreview"), { ssr: false });
+
 
 export interface SelectedArea {
   points: [number, number][];
@@ -20,30 +24,79 @@ interface SatelliteTile {
 interface PlacedElement {
   id: string;
   type: string;
-  x: number;        // world px
-  y: number;        // world px
-  wPx: number;      // world px (from metres * pixelsPerMetre)
-  hPx: number;      // world px
+  x: number;
+  y: number;
+  wPx: number;
+  hPx: number;
   rotation: number;
   note?: string;
 }
 
 interface Viewport {
-  x: number;      // pan x (screen offset)
-  y: number;      // pan y (screen offset)
+  x: number;
+  y: number;
   zoom: number;
-  angle: number;  // radians
+  angle: number;
 }
 
 interface PlanStats {
   totalMin: number;
   totalMax: number;
-  tempDelta: number;    // negative = cooling (°C)
-  coveragePct: number;  // % of parcel area covered by elements
+  tempDelta: number;
+  coveragePct: number;
   breakdown: { label: string; icon: string; count: number; min: number; max: number }[];
 }
 
-// ─── Tile helpers ─────────────────────────────────────────────────────────────
+
+function parseDimensions(dim: string): { w: number; h: number } {
+  const parts = dim
+    .split(/[×x]/i)
+    .map(part => part.replace(/[^\d,.-]/g, "").replace(",", ".").trim())
+    .map(value => Number.parseFloat(value))
+    .filter(value => Number.isFinite(value));
+  return { w: parts[0] ?? 1, h: parts[1] ?? 1 };
+}
+
+function getItemCanvasDimensions(item: Item): { w: number; h: number } {
+  if (item.dimensionsM) {
+    return { w: item.dimensionsM.width, h: item.dimensionsM.depth };
+  }
+  return parseDimensions(item.dimensions);
+}
+
+function costToPrice(cost: Item["cost"]): { min: number; max: number } {
+  if (cost === "low") return { min: 500, max: 2000 };
+  if (cost === "medium") return { min: 2000, max: 8000 };
+  return { min: 8000, max: 30000 };
+}
+
+const ELEMENT_CATALOG = ITEMS.reduce<{ category: string; items: any[] }[]>((acc, item) => {
+  const { w, h } = getItemCanvasDimensions(item);
+  const entry = {
+    type: item.id,
+    label: item.name,
+    icon: item.emoji,
+    w,
+    h,
+    shape: "rect",
+    color: "#4A7C59",
+    desc: item.dimensions,
+    itemRef: item,
+  };
+  const existing = acc.find(c => c.category === item.category);
+  if (existing) existing.items.push(entry);
+  else acc.push({ category: item.category, items: [entry] });
+  return acc;
+}, []);
+
+const ELEMENT_PRICES: Record<string, { min: number; max: number }> = Object.fromEntries(
+  ITEMS.map(item => [item.id, costToPrice(item.cost)])
+);
+
+const ELEMENT_COOLING: Record<string, number> = Object.fromEntries(
+  ITEMS.map(item => [item.id, item.coolingEffect / 10])
+);
+
 
 function lngToTileX(lng: number, z: number): number {
   return Math.floor(((lng + 180) / 360) * 2 ** z);
@@ -60,7 +113,6 @@ function tileYToLat(y: number, z: number): number {
   return (180 / Math.PI) * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
 }
 
-// ─── Geo → canvas projection ──────────────────────────────────────────────────
 
 function makeProjection(
   points: [number, number][],
@@ -105,116 +157,6 @@ function makeProjection(
   return { project, unproject, pixelsPerMetre };
 }
 
-// ─── Element catalog ──────────────────────────────────────────────────────────
-
-const ELEMENT_CATALOG = [
-  {
-    category: "Nádoby",
-    items: [
-      { type: "pot_small",    label: "Malý květináč",     icon: "🪴", w: 0.30, h: 0.30, shape: "circle",  color: "#8B6F47", desc: "ø 30 cm" },
-      { type: "pot_large",    label: "Velký květináč",    icon: "🏺", w: 0.50, h: 0.50, shape: "circle",  color: "#7A5C3A", desc: "ø 50 cm" },
-      { type: "planter_box",  label: "Truhlík",           icon: "▭",  w: 1.20, h: 0.50, shape: "rect",    color: "#6B4F2E", desc: "120×50 cm" },
-      { type: "window_box",   label: "Okenní truhlík",    icon: "▭",  w: 0.80, h: 0.25, shape: "rect",    color: "#8B6F47", desc: "80×25 cm" },
-      { type: "hanging",      label: "Závěsný koš",       icon: "⊕",  w: 0.30, h: 0.30, shape: "circle",  color: "#9E7B56", desc: "ø 30 cm" },
-    ],
-  },
-  {
-    category: "Pěstební záhony",
-    items: [
-      { type: "bed_small",    label: "Vyvýšený záhon S",  icon: "▬",  w: 1.20, h: 0.80, shape: "rect",    color: "#4A7C59", desc: "120×80 cm" },
-      { type: "bed_medium",   label: "Vyvýšený záhon M",  icon: "▬",  w: 2.00, h: 1.00, shape: "rect",    color: "#3D6B4A", desc: "200×100 cm" },
-      { type: "bed_large",    label: "Vyvýšený záhon L",  icon: "▬",  w: 3.00, h: 1.20, shape: "rect",    color: "#336040", desc: "300×120 cm" },
-      { type: "bed_round",    label: "Kulatý záhon",      icon: "◯",  w: 1.20, h: 1.20, shape: "circle",  color: "#4A7C59", desc: "ø 120 cm" },
-      { type: "keyhole",      label: "Záhon keyhole",     icon: "◌",  w: 1.80, h: 1.80, shape: "keyhole", color: "#5A8C6A", desc: "ø 180 cm" },
-    ],
-  },
-  {
-    category: "Konstrukce",
-    items: [
-      { type: "trellis",      label: "Mříž",              icon: "⊞",  w: 2.00, h: 0.20, shape: "rect",    color: "#8B7355", desc: "200×20 cm" },
-      { type: "arch",         label: "Zahradní oblouk",   icon: "⌢",  w: 0.80, h: 0.30, shape: "arch",    color: "#7A6445", desc: "80×30 cm" },
-      { type: "coldframe",    label: "Pařeniště",         icon: "▦",  w: 1.20, h: 0.80, shape: "rect",    color: "#6B8C9E", desc: "120×80 cm" },
-      { type: "greenhouse",   label: "Mini skleník",      icon: "🏠", w: 2.00, h: 1.50, shape: "rect",    color: "#82A8BC", desc: "200×150 cm" },
-      { type: "compost",      label: "Kompostér",         icon: "♻",  w: 0.80, h: 0.80, shape: "rect",    color: "#7A6840", desc: "80×80 cm" },
-    ],
-  },
-  {
-    category: "Voda",
-    items: [
-      { type: "water_barrel", label: "Sud na vodu",       icon: "⬤",  w: 0.60, h: 0.60, shape: "circle",  color: "#5B7FA0", desc: "200 L" },
-      { type: "water_tank",   label: "IBC nádrž",         icon: "▣",  w: 1.00, h: 1.20, shape: "rect",    color: "#4A6E8F", desc: "1000 L" },
-      { type: "pond",         label: "Mini jezírko",      icon: "◯",  w: 1.50, h: 1.00, shape: "ellipse", color: "#3D6B8A", desc: "150×100 cm" },
-      { type: "tap",          label: "Vodovodní bod",     icon: "⊕",  w: 0.10, h: 0.10, shape: "circle",  color: "#5B7FA0", desc: "kohoutek" },
-    ],
-  },
-  {
-    category: "Cesty",
-    items: [
-      { type: "path_h",       label: "Cesta (V)",         icon: "—",  w: 2.00, h: 0.60, shape: "rect",    color: "#C4B89A", desc: "200×60 cm" },
-      { type: "path_v",       label: "Cesta (S)",         icon: "|",  w: 0.60, h: 2.00, shape: "rect",    color: "#C4B89A", desc: "60×200 cm" },
-      { type: "seating",      label: "Posezení",          icon: "◻",  w: 3.00, h: 3.00, shape: "rect",    color: "#B8A882", desc: "300×300 cm" },
-    ],
-  },
-];
-
-// ─── Pricing (CZK, min–max) ───────────────────────────────────────────────────
-// Approximate retail prices in Czech Republic.
-
-const ELEMENT_PRICES: Record<string, { min: number; max: number }> = {
-  pot_small:    { min:  150, max:   450 },
-  pot_large:    { min:  400, max:  1200 },
-  planter_box:  { min:  600, max:  2200 },
-  window_box:   { min:  250, max:   800 },
-  hanging:      { min:  180, max:   600 },
-  bed_small:    { min:  800, max:  2800 },
-  bed_medium:   { min: 1400, max:  4500 },
-  bed_large:    { min: 2200, max:  7000 },
-  bed_round:    { min: 1000, max:  3200 },
-  keyhole:      { min: 1800, max:  5500 },
-  trellis:      { min:  600, max:  2000 },
-  arch:         { min:  900, max:  3500 },
-  coldframe:    { min: 1200, max:  4000 },
-  greenhouse:   { min: 3500, max: 12000 },
-  compost:      { min:  500, max:  1800 },
-  water_barrel: { min:  600, max:  1800 },
-  water_tank:   { min: 2800, max:  6500 },
-  pond:         { min: 1500, max:  5500 },
-  tap:          { min:  300, max:   900 },
-  path_h:       { min:  400, max:  1400 },
-  path_v:       { min:  400, max:  1400 },
-  seating:      { min: 2500, max:  9000 },
-};
-
-// ─── Cooling coefficients ─────────────────────────────────────────────────────
-// °C reduction per m² of element footprint, based on urban heat island /
-// evapotranspiration literature.
-
-const ELEMENT_COOLING: Record<string, number> = {
-  greenhouse:   0.18,
-  coldframe:    0.10,
-  arch:         0.08,
-  trellis:      0.07,
-  pond:         0.22,
-  water_barrel: 0.06,
-  water_tank:   0.08,
-  tap:          0.01,
-  keyhole:      0.12,
-  bed_large:    0.11,
-  bed_medium:   0.10,
-  bed_small:    0.09,
-  bed_round:    0.09,
-  pot_large:    0.06,
-  pot_small:    0.04,
-  planter_box:  0.05,
-  window_box:   0.03,
-  hanging:      0.03,
-  compost:      0.04,
-  path_h:       0.01,
-  path_v:       0.01,
-  seating:      0.02,
-};
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatCZK(n: number): string {
   return n.toLocaleString("cs-CZ") + "\u00a0Kč";
@@ -243,7 +185,6 @@ function rectWithinPolygon(x: number, y: number, w: number, h: number, polygon: 
   return corners.every(corner => pointInPolygon(corner, polygon));
 }
 
-// ─── Plan stats ───────────────────────────────────────────────────────────────
 
 function computePlanStats(elements: PlacedElement[], parcelAreaSqM: number, pixelsPerMetre: number): PlanStats {
   const ppm2 = pixelsPerMetre * pixelsPerMetre;
@@ -280,7 +221,6 @@ function computePlanStats(elements: PlacedElement[], parcelAreaSqM: number, pixe
   return { totalMin, totalMax, tempDelta, coveragePct, breakdown };
 }
 
-// ─── Canvas shape renderer ────────────────────────────────────────────────────
 
 function drawShape(
   ctx: CanvasRenderingContext2D,
@@ -315,7 +255,7 @@ function drawShape(
     ctx.beginPath();
     ctx.ellipse(0, 0, hw, hh, 0, 0, Math.PI * 2);
     ctx.fill(); ctx.stroke();
-  } else if (shape === "rect") {
+  } else {
     ctx.beginPath();
     (ctx as any).roundRect(-hw, -hh, w, h, 3);
     ctx.fill(); ctx.stroke();
@@ -324,28 +264,6 @@ function drawShape(
     for (let ox = -hw + step; ox < hw; ox += step) {
       ctx.beginPath(); ctx.moveTo(ox, -hh + 4); ctx.lineTo(ox, hh - 4); ctx.stroke();
     }
-  } else if (shape === "arch") {
-    ctx.beginPath();
-    (ctx as any).roundRect(-hw, -hh, w, h, 6);
-    ctx.fill(); ctx.stroke();
-    ctx.strokeStyle = color + "55"; ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(0, hh, hw * 0.7, Math.PI, 0);
-    ctx.stroke();
-  } else if (shape === "keyhole") {
-    ctx.beginPath();
-    ctx.ellipse(0, 0, hw, hh, 0, 0, Math.PI * 2);
-    ctx.fill(); ctx.stroke();
-    ctx.strokeStyle = color + "44"; ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.ellipse(0, 0, hw * 0.5, hh * 0.5, 0, 0, Math.PI * 2);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(0, -hh * 0.5); ctx.lineTo(0, -hh);
-    ctx.stroke();
-  } else {
-    ctx.fillRect(-hw, -hh, w, h);
-    ctx.strokeRect(-hw, -hh, w, h);
   }
 
   const showLabel = !selected && !hovered;
@@ -362,11 +280,7 @@ function drawShape(
     ctx.shadowBlur = 0;
     ctx.strokeStyle = "#2e3a1f";
     ctx.lineWidth = 2.5; ctx.setLineDash([]);
-    if (shape === "circle" || shape === "ellipse" || shape === "keyhole") {
-      ctx.beginPath(); ctx.ellipse(0, 0, hw + 5, hh + 5, 0, 0, Math.PI * 2); ctx.stroke();
-    } else {
-      ctx.strokeRect(-hw - 5, -hh - 5, w + 10, h + 10);
-    }
+    ctx.strokeRect(-hw - 5, -hh - 5, w + 10, h + 10);
     const tick = 5, ox = hw + 7, oy = hh + 7;
     ctx.lineWidth = 2;
     ctx.beginPath();
@@ -380,39 +294,192 @@ function drawShape(
   ctx.restore();
 }
 
-// ─── Sidebar catalog item ─────────────────────────────────────────────────────
+
+function CostBadge({ cost }: { cost: Item["cost"] }) {
+  const map = { low: { label: "Nízká cena", color: "#4A7C59" }, medium: { label: "Střední cena", color: "#8B7355" }, high: { label: "Vysoká cena", color: "#A0522D" } };
+  const { label, color } = map[cost];
+  return (
+    <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 3, background: color + "22", color, fontFamily: "inherit", letterSpacing: "0.04em" }}>
+      {label}
+    </span>
+  );
+}
+
+function ItemTooltip({ item }: { item: Item }) {
+  const price = costToPrice(item.cost);
+  return (
+    <div style={{
+      width: 220, background: "#F4F5E0", border: "1.5px solid #2e3a1f33",
+      borderRadius: 6, boxShadow: "0 4px 20px #2e3a1f22", padding: "14px 16px",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+        <div style={{ width: 36, height: 36, borderRadius: 6, background: "#4A7C5922", border: "1.5px solid #4A7C5966", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>
+          {item.emoji}
+        </div>
+        <div>
+          <div style={{ fontSize: 13, color: "#2e3a1f", fontStyle: "italic", marginBottom: 2 }}>{item.name}</div>
+          <div style={{ fontSize: 10, color: "#2e3a1f66", letterSpacing: "0.06em", textTransform: "uppercase" }}>{item.category}</div>
+        </div>
+      </div>
+
+      {item.modelPath && (
+        <div
+          style={{
+            height: 100,
+            marginBottom: 10,
+            borderRadius: 6,
+            overflow: "hidden",
+            border: "1px solid #2e3a1f1a",
+            background: "radial-gradient(circle at 50% 40%, #ffffff 0%, #eef2df 65%, #e4e9cf 100%)",
+          }}
+        >
+          <StlPreview modelPath={item.modelPath} zoom={0.32} />
+        </div>
+      )}
+
+      <p style={{ fontSize: 11, color: "#2e3a1f88", lineHeight: 1.55, marginBottom: 10, margin: "0 0 10px" }}>
+        {item.description}
+      </p>
+
+      <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 10 }}>
+        <CostBadge cost={item.cost} />
+        {item.waterNeeded && (
+          <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 3, background: "#5B7FA022", color: "#5B7FA0", fontFamily: "inherit", letterSpacing: "0.04em" }}>
+            💧 Potřebuje vodu
+          </span>
+        )}
+        <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 3, background: "#2e3a1f0a", color: "#2e3a1f66", fontFamily: "inherit", letterSpacing: "0.04em" }}>
+          Údržba: {item.maintenance === "low" ? "nízká" : item.maintenance === "medium" ? "střední" : "vysoká"}
+        </span>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 12px", marginBottom: 10 }}>
+        {[
+          { label: "Rozměry", value: item.dimensions },
+          { label: "Životnost", value: item.lifespan },
+          { label: "Chlazení", value: `−${item.coolingEffect} °C` },
+          { label: "Hmotnost", value: item.weight },
+        ].map(({ label, value }) => (
+          <div key={label}>
+            <div style={{ fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase", color: "#2e3a1f55", marginBottom: 1 }}>{label}</div>
+            <div style={{ fontSize: 11, color: "#2e3a1f" }}>{value}</div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ marginBottom: 10 }}>
+        <div style={{ fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase", color: "#2e3a1f55", marginBottom: 1 }}>Materiál</div>
+        <div style={{ fontSize: 11, color: "#2e3a1f88" }}>{item.material}</div>
+      </div>
+
+      {Object.keys(item.specs).length > 0 && (
+        <div style={{ marginBottom: 10 }}>
+          {Object.entries(item.specs).map(([k, v]) => (
+            <div key={k} style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
+              <span style={{ color: "#2e3a1f66" }}>{k}</span>
+              <span style={{ color: "#2e3a1f" }}>{v}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 10 }}>
+        {item.tags.map(tag => (
+          <span key={tag} style={{ fontSize: 9, padding: "2px 6px", borderRadius: 3, background: "#2e3a1f0d", color: "#2e3a1f77", fontFamily: "inherit" }}>
+            #{tag}
+          </span>
+        ))}
+      </div>
+
+      <div style={{ borderTop: "1px solid #2e3a1f11", paddingTop: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span style={{ fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", color: "#2e3a1f55" }}>Odhadovaná cena</span>
+        <span style={{ fontSize: 12, color: "#2e3a1f", fontStyle: "italic" }}>{formatCZK(price.min)} – {formatCZK(price.max)}</span>
+      </div>
+    </div>
+  );
+}
+
 
 function CatalogItem({ item, onDragStart }: { item: any; onDragStart: (e: React.DragEvent, item: any) => void }) {
+  const [hovered, setHovered] = useState(false);
+  const [tooltipPos, setTooltipPos] = useState<{ left: number; top: number } | null>(null);
+  const itemRef = useRef<HTMLDivElement>(null);
   const p = ELEMENT_PRICES[item.type];
   const priceLabel = p
     ? `${p.min >= 1000 ? `${(p.min / 1000).toFixed(p.min % 1000 === 0 ? 0 : 1)}k` : p.min}–${p.max >= 1000 ? `${(p.max / 1000).toFixed(p.max % 1000 === 0 ? 0 : 1)}k` : p.max} Kč`
     : null;
 
+  useEffect(() => {
+    if (!hovered || !item.itemRef) {
+      setTooltipPos(null);
+      return;
+    }
+
+    function updateTooltipPos() {
+      const rect = itemRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const tooltipWidth = item.itemRef?.modelPath ? 220 : 240;
+      const viewportPadding = 8;
+      const left = Math.min(
+        rect.right + 8,
+        window.innerWidth - tooltipWidth - viewportPadding
+      );
+      setTooltipPos({ left: Math.max(viewportPadding, left), top: rect.top });
+    }
+
+    updateTooltipPos();
+    window.addEventListener("resize", updateTooltipPos);
+    window.addEventListener("scroll", updateTooltipPos, true);
+    return () => {
+      window.removeEventListener("resize", updateTooltipPos);
+      window.removeEventListener("scroll", updateTooltipPos, true);
+    };
+  }, [hovered, item.itemRef]);
+
   return (
-    <div
-      draggable
-      onDragStart={e => onDragStart(e, item)}
-      title={`${item.desc}${p ? ` · ${formatCZK(p.min)}–${formatCZK(p.max)}` : ""}`}
-      style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, padding: "10px 6px", cursor: "grab", border: "1.5px solid transparent", borderRadius: 4, transition: "all 0.12s", userSelect: "none" }}
-      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = "#2e3a1f33"; (e.currentTarget as HTMLElement).style.background = "#2e3a1f08"; }}
-      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = "transparent"; (e.currentTarget as HTMLElement).style.background = "transparent"; }}
-    >
-      <div style={{ width: 36, height: 36, borderRadius: 4, background: item.color + "33", border: `1.5px solid ${item.color}66`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>
-        {item.icon}
-      </div>
-      <span style={{ fontSize: 9, letterSpacing: "0.06em", textTransform: "uppercase", color: "#2e3a1f88", textAlign: "center", lineHeight: 1.2, maxWidth: 52, fontFamily: "inherit" }}>
-        {item.label}
-      </span>
-      {priceLabel && (
-        <span style={{ fontSize: 8, color: "#2e3a1f55", fontFamily: "inherit", textAlign: "center" }}>
-          {priceLabel}
+    <div ref={itemRef} style={{ position: "relative" }}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}>
+      <div
+        draggable
+        onDragStart={e => onDragStart(e, item)}
+        style={{
+          display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+          padding: "10px 6px", cursor: "grab",
+          border: `1.5px solid ${hovered ? "#2e3a1f33" : "transparent"}`,
+          borderRadius: 4, transition: "all 0.12s", userSelect: "none",
+          background: hovered ? "#2e3a1f08" : "transparent",
+        }}
+      >
+        <div style={{ width: 36, height: 36, borderRadius: 4, background: item.color + "33", border: `1.5px solid ${item.color}66`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>
+          {item.icon}
+        </div>
+        <span style={{ fontSize: 9, letterSpacing: "0.06em", textTransform: "uppercase", color: "#2e3a1f88", textAlign: "center", lineHeight: 1.2, maxWidth: 52, fontFamily: "inherit" }}>
+          {item.label}
         </span>
+        {priceLabel && (
+          <span style={{ fontSize: 8, color: "#2e3a1f55", fontFamily: "inherit", textAlign: "center" }}>
+            {priceLabel}
+          </span>
+        )}
+      </div>
+      {hovered && item.itemRef && tooltipPos && (
+        <div
+          style={{
+            position: "fixed",
+            left: tooltipPos.left,
+            top: tooltipPos.top,
+            zIndex: 9999,
+            pointerEvents: "none",
+          }}
+        >
+          <ItemTooltip item={item.itemRef} />
+        </div>
       )}
     </div>
   );
 }
 
-// ─── Properties panel ─────────────────────────────────────────────────────────
 
 function PropertiesPanel({ item, selectedCount, onChange, onDelete }: {
   item: PlacedElement | null;
@@ -427,6 +494,7 @@ function PropertiesPanel({ item, selectedCount, onChange, onDelete }: {
   );
   const catalogItem = ELEMENT_CATALOG.flatMap(c => c.items).find(i => i.type === item.type);
   const price = ELEMENT_PRICES[item.type];
+  const itemData: Item | undefined = (catalogItem as any)?.itemRef;
 
   return (
     <div style={{ padding: "16px" }}>
@@ -437,6 +505,13 @@ function PropertiesPanel({ item, selectedCount, onChange, onDelete }: {
         {price && (
           <div style={{ fontSize: 10, color: "#2e3a1f77", marginTop: 4 }}>
             {formatCZK(price.min)} – {formatCZK(price.max)}
+          </div>
+        )}
+        {itemData && (
+          <div style={{ marginTop: 8, fontSize: 11, color: "#2e3a1f66", lineHeight: 1.5 }}>
+            <div>Chlazení: <span style={{ color: "#2a7d4f" }}>−{itemData.coolingEffect} °C</span></div>
+            <div>Životnost: {itemData.lifespan}</div>
+            {itemData.waterNeeded && <div style={{ color: "#5B7FA0" }}>💧 Potřebuje zavlažování</div>}
           </div>
         )}
       </div>
@@ -465,7 +540,6 @@ function PropertiesPanel({ item, selectedCount, onChange, onDelete }: {
   );
 }
 
-// ─── Plan Summary Bar ─────────────────────────────────────────────────────────
 
 function PlanSummaryBar({ stats, expanded, onToggle }: {
   stats: PlanStats | null;
@@ -482,10 +556,8 @@ function PlanSummaryBar({ stats, expanded, onToggle }: {
 
   return (
     <div style={{ flexShrink: 0, borderTop: "1.5px solid #2e3a1f22", background: "#F4F5E0", transition: "all 0.22s ease" }}>
-      {/* Always-visible summary row */}
       <div onClick={onToggle}
         style={{ height: 44, display: "flex", alignItems: "center", padding: "0 20px", cursor: "pointer", userSelect: "none" }}>
-        {/* Cost */}
         <div style={{ display: "flex", alignItems: "baseline", gap: 6, minWidth: 220 }}>
           <span style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "#2e3a1f77" }}>Celkem</span>
           {hasElements
@@ -493,13 +565,11 @@ function PlanSummaryBar({ stats, expanded, onToggle }: {
             : <span style={{ fontSize: 13, color: "#2e3a1f44", fontStyle: "italic" }}>žádné prvky</span>}
         </div>
         <div style={{ width: 1, height: 20, background: "#2e3a1f22", margin: "0 20px" }} />
-        {/* Temperature */}
         <div style={{ display: "flex", alignItems: "baseline", gap: 6, minWidth: 160 }}>
           <span style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "#2e3a1f77" }}>Ochlazení</span>
           <span style={{ fontSize: 14, color: tempColor, fontStyle: "italic" }}>{hasElements ? tempLabel : "—"}</span>
         </div>
         <div style={{ width: 1, height: 20, background: "#2e3a1f22", margin: "0 20px" }} />
-        {/* Coverage */}
         <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1 }}>
           <span style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "#2e3a1f77" }}>{coverLabel}</span>
           {hasElements && (
@@ -508,17 +578,14 @@ function PlanSummaryBar({ stats, expanded, onToggle }: {
             </div>
           )}
         </div>
-        {/* Toggle */}
         <div style={{ fontSize: 10, color: "#2e3a1f55", letterSpacing: "0.06em", display: "flex", alignItems: "center", gap: 4 }}>
           <span>{expanded ? "Skrýt" : "Podrobnosti"}</span>
           <span style={{ fontSize: 12, display: "inline-block", transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>▾</span>
         </div>
       </div>
 
-      {/* Expanded breakdown */}
       {expanded && (
         <div style={{ borderTop: "1.5px solid #2e3a1f11", padding: "12px 20px 16px", display: "flex", gap: 32, flexWrap: "wrap" }}>
-          {/* Cost breakdown */}
           <div style={{ flex: 1, minWidth: 260 }}>
             <div style={{ fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "#2e3a1f66", marginBottom: 8 }}>Rozpis nákladů</div>
             {!hasElements
@@ -543,8 +610,6 @@ function PlanSummaryBar({ stats, expanded, onToggle }: {
                 </div>
               )}
           </div>
-
-          {/* Microclimate */}
           <div style={{ minWidth: 220, maxWidth: 320 }}>
             <div style={{ fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "#2e3a1f66", marginBottom: 8 }}>Vliv na mikroklima</div>
             {!hasElements
@@ -556,28 +621,8 @@ function PlanSummaryBar({ stats, expanded, onToggle }: {
                     <span style={{ fontSize: 11, color: "#2e3a1f66" }}>oproti nezasáhnuté parcele</span>
                   </div>
                   <div style={{ fontSize: 11, color: "#2e3a1f77", lineHeight: 1.55 }}>
-                    Odhad vychází z kombinace stínění, evapotranspirace rostlin a odpařování vodních prvků. Vodní plochy a stínící konstrukce přispívají nejvíce.
+                    Odhad vychází z kombinace stínění, evapotranspirace rostlin a odpařování vodních prvků.
                   </div>
-                  {[
-                    { label: "Vodní prvky",    types: ["pond", "water_barrel", "water_tank"],                                                               color: "#5B7FA0" },
-                    { label: "Záhony a nádoby", types: ["bed_small","bed_medium","bed_large","bed_round","keyhole","pot_small","pot_large","planter_box","window_box","hanging"], color: "#4A7C59" },
-                    { label: "Konstrukce",      types: ["greenhouse","coldframe","arch","trellis","compost"],                                               color: "#8B7355" },
-                  ].map(group => {
-                    const allCatalogItems = ELEMENT_CATALOG.flatMap(c => c.items);
-                    const groupCost = stats!.breakdown
-                      .filter(b => group.types.some(t => b.label === allCatalogItems.find(i => i.type === t)?.label))
-                      .reduce((s, b) => s + b.max, 0);
-                    if (groupCost === 0) return null;
-                    return (
-                      <div key={group.label} style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 8 }}>
-                        <div style={{ width: 8, height: 8, borderRadius: 2, background: group.color, flexShrink: 0 }} />
-                        <span style={{ fontSize: 10, color: "#2e3a1f88", flex: 1 }}>{group.label}</span>
-                        <div style={{ width: 80, height: 3, borderRadius: 2, background: "#2e3a1f18", overflow: "hidden" }}>
-                          <div style={{ height: "100%", background: group.color, width: `${(groupCost / (stats!.totalMax || 1)) * 100}%` }} />
-                        </div>
-                      </div>
-                    );
-                  })}
                 </>
               )}
           </div>
@@ -587,21 +632,6 @@ function PlanSummaryBar({ stats, expanded, onToggle }: {
   );
 }
 
-// ─── ParcelEditor ─────────────────────────────────────────────────────────────
-//
-// Keyboard shortcuts:
-//   Scroll wheel            → zoom toward cursor
-//   Middle-click drag       → pan
-//   Space + left drag       → pan
-//   F                       → fit parcel to screen
-//   [ / ]                   → rotate viewport ±15°
-//   Shift+click             → add/remove from selection
-//   Delete / Backspace      → remove selected elements
-//   Escape                  → deselect all
-//
-// Props:
-//   area    — parcel geometry from the map picker
-//   onBack  — called when the user clicks "Back"
 
 export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onBack: () => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -643,7 +673,6 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
   useEffect(() => { selectedIdsRef.current = selectedIds; }, [selectedIds]);
   useEffect(() => { hoveredIdRef.current = hoveredId; }, [hoveredId]);
 
-  // ── Satellite tile loading ──────────────────────────────────────────────────
 
   useEffect(() => {
     if (editorMapStyle !== "satellite") { setSatImageStatus("idle"); return; }
@@ -683,7 +712,6 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
     return () => { cancelled = true; };
   }, [editorMapStyle, area.bounds.north, area.bounds.south, area.bounds.east, area.bounds.west]);
 
-  // ── Viewport helpers ────────────────────────────────────────────────────────
 
   function screenToWorld(sx: number, sy: number): [number, number] {
     const { x, y, zoom, angle } = vp.current;
@@ -719,7 +747,6 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
     }
   });
 
-  // ── Render loop ─────────────────────────────────────────────────────────────
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -747,7 +774,6 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
       ctx.fillStyle = bgFill;
       ctx.fillRect(0, 0, w, h);
 
-      // Background grid (screen-space)
       const gridStep = 40;
       ctx.strokeStyle = bgGrid; ctx.lineWidth = 0.5;
       const gox = ((vpX % gridStep) + gridStep) % gridStep;
@@ -759,7 +785,6 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
         ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(w, gy); ctx.stroke();
       }
 
-      // World-space drawing
       ctx.save();
       const cos = Math.cos(angle), sin = Math.sin(angle);
       ctx.setTransform(zoom * cos, zoom * sin, -zoom * sin, zoom * cos, vpX, vpY);
@@ -768,7 +793,6 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
       pixelsPerMetreRef.current = pixelsPerMetre;
       const worldPts = area.points.map(project);
 
-      // Outside-parcel dim
       const big = 999999;
       ctx.beginPath();
       ctx.rect(-big, -big, big * 2, big * 2);
@@ -778,7 +802,6 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
       ctx.fillStyle = outsideFill;
       ctx.fill("evenodd");
 
-      // Parcel fill
       ctx.beginPath();
       ctx.moveTo(worldPts[0][0], worldPts[0][1]);
       worldPts.forEach(([px, py]) => ctx.lineTo(px, py));
@@ -786,7 +809,6 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
       ctx.fillStyle = parcelFill;
       ctx.fill();
 
-      // Satellite imagery (clipped to parcel)
       if (hasTiles) {
         ctx.save();
         ctx.beginPath();
@@ -803,7 +825,6 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
         ctx.globalAlpha = 1; ctx.restore();
       }
 
-      // Metre grid (clipped to parcel)
       ctx.save();
       ctx.beginPath();
       ctx.moveTo(worldPts[0][0], worldPts[0][1]);
@@ -823,14 +844,12 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
       for (let gy = wy0; gy <= wy1; gy += gw * 5) { ctx.beginPath(); ctx.moveTo(wx0, gy); ctx.lineTo(wx1, gy); ctx.stroke(); }
       ctx.restore();
 
-      // Parcel border
       ctx.beginPath();
       ctx.moveTo(worldPts[0][0], worldPts[0][1]);
       worldPts.forEach(([px, py]) => ctx.lineTo(px, py));
       ctx.closePath();
       ctx.strokeStyle = parcelBorder; ctx.lineWidth = 2 / zoom; ctx.setLineDash([]); ctx.stroke();
 
-      // Loading indicator for satellite
       if (isSat && !hasTiles) {
         const cx = worldPts.reduce((s, p) => s + p[0], 0) / worldPts.length;
         const cy = worldPts.reduce((s, p) => s + p[1], 0) / worldPts.length;
@@ -842,7 +861,6 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
         ctx.restore();
       }
 
-      // Parcel area label
       ctx.save();
       ctx.font = `${11 / zoom}px sans-serif`;
       ctx.fillStyle = labelColor; ctx.textAlign = "left"; ctx.textBaseline = "top";
@@ -852,7 +870,6 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
       );
       ctx.restore();
 
-      // Scale bar
       {
         const barMetres = [0.5,1,2,5,10,20,50,100,200,500,1000].find(m => m * pixelsPerMetre >= 80 / zoom) ?? 1000;
         const barPx = barMetres * pixelsPerMetre;
@@ -869,7 +886,6 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
         ctx.fillText(barMetres >= 1000 ? `${barMetres / 1000}km` : `${barMetres}m`, bx + barPx / 2, by - 5 / zoom);
       }
 
-      // Elements
       elementsRef.current.forEach(el => {
         const cat = ELEMENT_CATALOG.flatMap(c => c.items).find(i => i.type === el.type);
         if (!cat) return;
@@ -877,9 +893,8 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
           selectedIdsRef.current.includes(el.id), el.id === hoveredIdRef.current);
       });
 
-      ctx.restore(); // end world transform
+      ctx.restore();
 
-      // Rotate handle (screen-space, drawn on top)
       rotateHandleRef.current = null;
       if (selectedIdsRef.current.length === 1) {
         const selId = selectedIdsRef.current[0];
@@ -912,7 +927,6 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
     return () => cancelAnimationFrame(raf);
   }, [area, editorMapStyle, satTilesVersion, satImageStatus]);
 
-  // ── Resize observer ─────────────────────────────────────────────────────────
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -958,7 +972,6 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
     return () => obs.disconnect();
   }, []);
 
-  // ── Wheel zoom ──────────────────────────────────────────────────────────────
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -978,7 +991,6 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
     return () => canvas.removeEventListener("wheel", onWheel);
   }, []);
 
-  // ── Keyboard ────────────────────────────────────────────────────────────────
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -1034,7 +1046,6 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
   }
   function stopRotateDrag() { rotateDragRef.current = null; }
 
-  // ── Hit testing ─────────────────────────────────────────────────────────────
 
   function hitTestScreen(sx: number, sy: number): PlacedElement | null {
     for (const el of [...elementsRef.current].reverse()) {
@@ -1081,7 +1092,6 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
     }).map(el => el.id);
   }
 
-  // ── Mouse handlers ──────────────────────────────────────────────────────────
 
   function onMouseDown(e: React.MouseEvent) {
     const [sx, sy] = getCanvasXY(e);
@@ -1209,7 +1219,6 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
     return () => window.removeEventListener("mouseup", onWindowMouseUp);
   }, []);
 
-  // ── Catalog drag ────────────────────────────────────────────────────────────
 
   function onCatalogDragStart(e: React.DragEvent, item: any) {
     draggingCatalogItem.current = item;
@@ -1237,7 +1246,6 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
     draggingCatalogItem.current = null;
   }
 
-  // ── Derived values ──────────────────────────────────────────────────────────
 
   const selectedElement = selectedIds.length === 1 ? (elements.find(el => el.id === selectedIds[0]) ?? null) : null;
   const categories = ELEMENT_CATALOG.map(c => c.category);
@@ -1249,12 +1257,10 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
   const planStats: PlanStats | null = elements.length === 0 ? null
     : computePlanStats(elements, parcelAreaSqM, pixelsPerMetreRef.current);
 
-  // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 4000, display: "flex", flexDirection: "column", background: "#F4F5E0" }}>
 
-      {/* Header */}
       <header style={{ height: 52, flexShrink: 0, borderBottom: "1.5px solid #2e3a1f22", display: "flex", alignItems: "center", background: "#F4F5E0" }}>
         <button onClick={onBack}
           style={{ height: "100%", padding: "0 20px", borderRight: "1.5px solid #2e3a1f22", background: "none", border: "none", cursor: "pointer", color: "#2e3a1f", fontSize: 13, fontFamily: "inherit", letterSpacing: "0.04em", display: "flex", alignItems: "center", gap: 8 }}>
@@ -1272,7 +1278,6 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
           </span>
         </div>
 
-        {/* Viewport controls */}
         <div style={{ display: "flex", alignItems: "center", height: "100%", borderLeft: "1.5px solid #2e3a1f22", borderRight: "1.5px solid #2e3a1f22" }}>
           <button title="Otočit pohled o −15° ( [ )" onClick={() => rotateViewport(-15 * Math.PI / 180)}
             style={{ height: "100%", padding: "0 12px", background: "none", border: "none", cursor: "pointer", color: "#2e3a1f88", fontSize: 14, fontFamily: "inherit" }}>↺</button>
@@ -1284,7 +1289,6 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
             style={{ height: "100%", padding: "0 12px", background: "none", border: "none", cursor: "pointer", color: "#2e3a1f88", fontSize: 14, fontFamily: "inherit" }}>↻</button>
         </div>
 
-        {/* Map style toggle */}
         <div style={{ display: "flex", alignItems: "center", height: "100%", borderRight: "1.5px solid #2e3a1f22", padding: "0 8px", gap: 6 }}>
           {(["map", "satellite"] as const).map(style => (
             <button key={style} onClick={() => setEditorMapStyle(style)}
@@ -1305,10 +1309,8 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
         </div>
       </header>
 
-      {/* Body */}
       <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
 
-        {/* Left sidebar */}
         <aside style={{ width: 220, flexShrink: 0, borderRight: "1.5px solid #2e3a1f22", display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <div style={{ padding: "12px", borderBottom: "1.5px solid #2e3a1f11" }}>
             <input value={sidebarSearch} onChange={e => setSidebarSearch(e.target.value)} placeholder="Hledat prvky…"
@@ -1326,11 +1328,11 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
               </button>
             ))}
           </div>
-          <div style={{ flex: 1, overflowY: "auto", padding: "8px" }}>
+          <div style={{ flex: 1, overflowY: "auto", padding: "8px", overflowX: "visible" }}>
             {filteredCatalog.map(cat => (
               <div key={cat.category} style={{ marginBottom: 16 }}>
                 <div style={{ fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "#2e3a1f55", marginBottom: 6, padding: "0 4px" }}>{cat.category}</div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 2 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 2, position: "relative" }}>
                   {cat.items.map(item => <CatalogItem key={item.type} item={item} onDragStart={onCatalogDragStart} />)}
                 </div>
               </div>
@@ -1344,7 +1346,6 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
           </div>
         </aside>
 
-        {/* Canvas */}
         <div style={{ flex: 1, position: "relative", overflow: "hidden" }}
           onDragOver={onCanvasDragOver} onDrop={onCanvasDrop} onDragLeave={() => setIsDragOver(false)}>
           {isDragOver && (
@@ -1375,7 +1376,6 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
           )}
         </div>
 
-        {/* Right sidebar: inspector */}
         <aside style={{ width: 200, flexShrink: 0, borderLeft: "1.5px solid #2e3a1f22", overflowY: "auto" }}>
           <div style={{ padding: "12px 16px", borderBottom: "1.5px solid #2e3a1f11", fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "#2e3a1f88" }}>
             Inspektor
@@ -1421,7 +1421,6 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
         </aside>
       </div>
 
-      {/* Plan summary bar */}
       <PlanSummaryBar
         stats={planStats}
         expanded={barExpanded}

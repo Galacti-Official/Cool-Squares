@@ -20,7 +20,6 @@ export default function RootLayout({
   return (
     <html lang="cs" className={`${ptSans.className} scroll-smooth`}>
       <body className="flex flex-col font-sans">
-        {/* Page content */}
         <main>
           {children}
         </main>

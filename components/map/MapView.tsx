@@ -76,7 +76,6 @@ function exceedsSelectionLimit(points: [number, number][]): boolean {
   return widthKm > MAX_SELECTION_SIDE_KM || heightKm > MAX_SELECTION_SIDE_KM;
 }
 
-// ─── MiniMap ──────────────────────────────────────────────────────────────────
 
 function MiniMap({ area }: { area: SelectedArea }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -113,7 +112,6 @@ function MiniMap({ area }: { area: SelectedArea }) {
   return <div ref={ref} className="w-full h-full" />;
 }
 
-// ─── Results page ─────────────────────────────────────────────────────────────
 
 const NAV_ITEMS = [
   { id: "overview", label: "Přehled",        icon: "◈" },
@@ -242,11 +240,10 @@ function ResultsPage({
   );
 }
 
-// ─── MapView ──────────────────────────────────────────────────────────────────
 
 function MapView({ onAreaSelected }: { onAreaSelected: (area: SelectedArea) => void }) {
   const LIGHT_TILES = "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
-  const SATELLITE_TILES = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
+  const SATELLITE_TILES = "https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}";
 
   const mapRef = useRef<HTMLDivElement>(null);
   const leafletMapRef = useRef<any>(null);
@@ -293,7 +290,11 @@ function MapView({ onAreaSelected }: { onAreaSelected: (area: SelectedArea) => v
       const L = (window as any).L;
       if (!L || !mapRef.current || leafletMapRef.current) return;
 
-      const map = L.map(mapRef.current, { center: [49.75, 15.5], zoom: 8, zoomControl: false, minZoom: 7 });
+      const map = L.map(mapRef.current, { 
+        center: [49.75, 15.5], 
+        zoom: 8, 
+        zoomControl: false, 
+        minZoom: 7, maxZoom: 19, });
       L.control.zoom({ position: "bottomright" }).addTo(map);
       leafletMapRef.current = map;
 
@@ -308,8 +309,8 @@ function MapView({ onAreaSelected }: { onAreaSelected: (area: SelectedArea) => v
       map.createPane("bgPane").style.zIndex = "199";
       map.createPane("czPane").style.zIndex = "200";
 
-      bgLayerRef.current = L.tileLayer(LIGHT_TILES, { attribution: "© OpenStreetMap contributors © CARTO", subdomains: "abcd", maxZoom: 20, pane: "bgPane", opacity: 0.15 }).addTo(map);
-      clipLayerRef.current = L.tileLayer(LIGHT_TILES, { attribution: "", subdomains: "abcd", maxZoom: 20, pane: "czPane" }).addTo(map);
+      bgLayerRef.current = L.tileLayer(LIGHT_TILES, { attribution: "© OpenStreetMap contributors © CARTO", subdomains: "abcd", maxZoom: 19, pane: "bgPane", opacity: 0.15 }).addTo(map);
+      clipLayerRef.current = L.tileLayer(LIGHT_TILES, { attribution: "", subdomains: "abcd", maxZoom: 19, pane: "czPane" }).addTo(map);
 
       if (czFeature) {
         const czBounds = L.geoJSON(czFeature).getBounds();
@@ -431,7 +432,7 @@ function MapView({ onAreaSelected }: { onAreaSelected: (area: SelectedArea) => v
     const world: [number, number][] = [[-90, -180], [-90, 180], [90, 180], [90, -180]];
     maskRef.current = L.polygon([world, points], { color: "transparent", fillColor: "#F4F5E0", fillOpacity: 0.92, fillRule: "evenodd", interactive: false }).addTo(map);
     polygonRef.current = L.polygon(points, { color: "#2e3a1f", weight: 2, fill: false, interactive: false }).addTo(map);
-    map.fitBounds(polygonRef.current.getBounds(), { padding: [60, 60], maxZoom: 18 });
+    map.fitBounds(polygonRef.current.getBounds(), { padding: [60, 60], maxZoom: 19 });
 
     const lats = points.map(p => p[0]);
     const lngs = points.map(p => p[1]);
@@ -524,7 +525,6 @@ function MapView({ onAreaSelected }: { onAreaSelected: (area: SelectedArea) => v
   );
 }
 
-// ─── Root ─────────────────────────────────────────────────────────────────────
 
 export default function App() {
   const [page, setPage] = useState<AppPage>("map");

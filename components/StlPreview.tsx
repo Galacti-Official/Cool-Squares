@@ -6,9 +6,15 @@ import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 
 type StlPreviewProps = {
   modelPath: string;
+  zoom?: number;
+  className?: string;
 };
 
-export default function StlPreview({ modelPath }: StlPreviewProps) {
+export default function StlPreview({
+  modelPath,
+  zoom = 1,
+  className = "h-full w-full",
+}: StlPreviewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -34,6 +40,25 @@ export default function StlPreview({ modelPath }: StlPreviewProps) {
     const loader = new STLLoader();
     let mesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial> | null = null;
 
+    const fitCameraToMesh = () => {
+      if (!mesh) return;
+      const box = new THREE.Box3().setFromObject(mesh);
+      const center = box.getCenter(new THREE.Vector3());
+      const size = box.getSize(new THREE.Vector3());
+      const radius = Math.max(size.x, size.y, size.z) / 2;
+      const vFov = THREE.MathUtils.degToRad(camera.fov);
+      const hFov = 2 * Math.atan(Math.tan(vFov / 2) * camera.aspect);
+      const limitingFov = Math.min(vFov, hFov);
+      const fitDistance = (radius / Math.tan(limitingFov / 2)) * 1.3;
+      const distance = fitDistance / Math.max(zoom, 0.1);
+
+      camera.position.set(center.x, center.y + radius * 0.25, center.z + distance);
+      camera.near = Math.max(0.01, distance / 100);
+      camera.far = Math.max(100, distance * 100);
+      camera.lookAt(center);
+      camera.updateProjectionMatrix();
+    };
+
     loader.load(modelPath, (geometry) => {
       geometry.center();
       geometry.computeVertexNormals();
@@ -50,10 +75,11 @@ export default function StlPreview({ modelPath }: StlPreviewProps) {
 
       const box = new THREE.Box3().setFromObject(mesh);
       const size = box.getSize(new THREE.Vector3()).length();
-      const scale = size > 0 ? 4.2 / size : 1;
+      const scale = size > 0 ? 3.9 / size : 1;
       mesh.scale.setScalar(scale);
 
       scene.add(mesh);
+      fitCameraToMesh();
     });
 
     const resize = () => {
@@ -63,7 +89,7 @@ export default function StlPreview({ modelPath }: StlPreviewProps) {
 
       renderer.setSize(width, height);
       camera.aspect = width / height;
-      camera.updateProjectionMatrix();
+      fitCameraToMesh();
     };
 
     resize();
@@ -95,12 +121,12 @@ export default function StlPreview({ modelPath }: StlPreviewProps) {
         container.removeChild(renderer.domElement);
       }
     };
-  }, [modelPath]);
+  }, [modelPath, zoom]);
 
   return (
     <div
       ref={containerRef}
-      className="h-full w-full"
+      className={className}
       aria-label="3D STL preview"
     />
   );
