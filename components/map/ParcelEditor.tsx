@@ -188,34 +188,8 @@ const HIT_PADDING_PX = 12;
 function snapTo(v: number) { return Math.round(v / SNAP) * SNAP; }
 function genId() { return Math.random().toString(36).slice(2, 9); }
 
-function pointOnSegment(
-  point: [number, number],
-  a: [number, number],
-  b: [number, number],
-  tolerance = 0.75
-): boolean {
-  const [px, py] = point;
-  const [ax, ay] = a;
-  const [bx, by] = b;
-  const dx = bx - ax;
-  const dy = by - ay;
-  const lenSq = dx * dx + dy * dy;
-  if (lenSq === 0) return Math.hypot(px - ax, py - ay) <= tolerance;
-
-  const t = ((px - ax) * dx + (py - ay) * dy) / lenSq;
-  if (t < -0.001 || t > 1.001) return false;
-
-  const projX = ax + t * dx;
-  const projY = ay + t * dy;
-  return Math.hypot(px - projX, py - projY) <= tolerance;
-}
-
 function pointInPolygon(point: [number, number], polygon: [number, number][]): boolean {
   const [x, y] = point;
-  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-    if (pointOnSegment(point, polygon[j], polygon[i])) return true;
-  }
-
   let inside = false;
   for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
     const [xi, yi] = polygon[i];
