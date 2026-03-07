@@ -1,19 +1,19 @@
 const steps = [
   {
-    title: "jmeno",
-    desc: "nejakej popis",
+    title: "Rozbalení a montáž",
+    desc: "Naše  rostlinná stěna přijde rozdělena na čtyři hlavní části. Rám stěny, hliníková vana, ocelový rám a prkna. Balení obsahuje i substrát a sazeničky.",
   },
   {
-    title: "jmeno",
-    desc: "nejakej popis",
+    title: "Růst",
+    desc: "Po sestavení a zasazení Psího vína, začne rostlina obrůstat rám stěny a vytvářet hustou pokrývku.",
   },
   {
-    title: "jmeno",
-    desc: "nejakej popis",
+    title: "Výsledek",
+    desc: "Po tom co rostlina obroste celý rám, vytvoří příjemné stíněné místo. Objem hliníkové vany je dostačující na to aby rostlina měla dostatek vláhy i v horkých letních dnech.",
   },
   {
-    title: "jmeno",
-    desc: "nejakej popis",
+    title: "DIY Úprava",
+    desc: "Kvůli modularitě a open source zpracování, lze jednoduše nainstalovat naše nebo vaše  vlastní příslušenství.",
   }
 ];
 
@@ -25,9 +25,6 @@ export default function HowItWorks() {
           <h2 className="font-display text-4xl md:text-5xl text-text mb-3">
             Jak to funguje?
           </h2>
-          <p className="text-text-mid max-w-md mx-auto">
-            popisek idk
-          </p>
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8">

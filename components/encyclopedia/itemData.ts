@@ -28,7 +28,7 @@ export interface Item {
   maintenance: "low" | "medium" | "high";
   lifespan: string;       
   material: string;
-  weight: string;          
+  weight: string;
   dimensions: string;
   modelPath?: string;
   dimensionsM?: ItemDimensions;
