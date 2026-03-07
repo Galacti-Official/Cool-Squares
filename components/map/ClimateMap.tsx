@@ -461,11 +461,24 @@ export default function ClimateMap({
           };
         }
 
+        if (mode === "czech") {
+          const parcelHalo = L.polygon(area.points, {
+            color: "#f4f5e0",
+            weight: 7,
+            opacity: 0.9,
+            fillColor: "#2e3a1f",
+            fillOpacity: 0.18,
+            interactive: false,
+          }).addTo(map);
+          layersRef.current.push(parcelHalo);
+        }
+
         const parcel = L.polygon(area.points, {
-          color: "#2e3a1f",
-          weight: 2.5,
-          fillColor: mode === "czech" ? "#2e3a1f00" : "#2e3a1f22",
-          fillOpacity: mode === "czech" ? 0 : 0.24,
+          color: "#1f2a12",
+          weight: mode === "czech" ? 3.5 : 2.5,
+          opacity: 1,
+          fillColor: mode === "czech" ? "#d8e6be" : "#2e3a1f22",
+          fillOpacity: mode === "czech" ? 0.38 : 0.24,
           interactive: false,
         }).addTo(map);
         layersRef.current.push(parcel);
@@ -474,11 +487,37 @@ export default function ClimateMap({
           const czBounds = czLayer.getBounds();
           map.setMaxBounds(czBounds.pad(0.02));
           map.fitBounds(czBounds, { padding: [0, 0], maxZoom: 8 });
+          const lockedZoom = map.getZoom();
+          map.setMinZoom(lockedZoom);
+          map.setMaxZoom(lockedZoom);
+          map.scrollWheelZoom.disable();
+          map.doubleClickZoom.disable();
+          map.touchZoom.disable();
+          map.boxZoom.disable();
+          map.keyboard.disable();
+          if (map.tap) map.tap.disable();
         } else if (mode === "czech") {
           map.setMaxBounds([[CZECH_BOUNDS.south, CZECH_BOUNDS.west], [CZECH_BOUNDS.north, CZECH_BOUNDS.east]]);
           map.fitBounds([[CZECH_BOUNDS.south, CZECH_BOUNDS.west], [CZECH_BOUNDS.north, CZECH_BOUNDS.east]], { padding: [0, 0], maxZoom: 8 });
+          const lockedZoom = map.getZoom();
+          map.setMinZoom(lockedZoom);
+          map.setMaxZoom(lockedZoom);
+          map.scrollWheelZoom.disable();
+          map.doubleClickZoom.disable();
+          map.touchZoom.disable();
+          map.boxZoom.disable();
+          map.keyboard.disable();
+          if (map.tap) map.tap.disable();
         } else {
           map.setMaxBounds(null);
+          map.setMinZoom(1);
+          map.setMaxZoom(19);
+          map.scrollWheelZoom.enable();
+          map.doubleClickZoom.enable();
+          map.touchZoom.enable();
+          map.boxZoom.enable();
+          map.keyboard.enable();
+          if (map.tap) map.tap.enable();
           map.fitBounds(parcel.getBounds().pad(0.6), { padding: [16, 16], maxZoom: 14 });
         }
       } catch (err) {
