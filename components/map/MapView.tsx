@@ -164,7 +164,9 @@ function ResultsPage({
         </div>
         <div style={{ display: "flex", alignItems: "center", height: "100%", borderLeft: "1.5px solid #2e3a1f22" }}>
           {["Sdílet", "Uložit"].map((label) => (
-            <button key={label} style={{ padding: "0 20px", height: "100%", background: "none", border: "none", borderRight: "1.5px solid #2e3a1f22", cursor: "pointer", color: "#2e3a1f99", fontSize: 13, fontFamily: "inherit", letterSpacing: "0.04em" }}>{label}</button>
+            <button key={label} style={{ padding: "0 20px", height: "100%", background: "none", border: "none", borderRight: "1.5px solid #2e3a1f22", cursor: "pointer", color: "#2e3a1f99", fontSize: 13, fontFamily: "inherit", letterSpacing: "0.04em" }} onClick={() => alert("Není ještě implementováno")}>
+              {label}
+            </button>
           ))}
           <button onClick={onOpenEditor} style={{ padding: "0 20px", height: "100%", background: "#2e3a1f", border: "none", cursor: "pointer", color: "#F4F5E0", fontSize: 13, fontFamily: "inherit", letterSpacing: "0.04em" }}>
             Otevřít v plánovači →
