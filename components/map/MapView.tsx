@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import ParcelEditor from "./ParcelEditor";
+import { formatAreaByMagnitude, formatDistanceByMagnitude } from "./areaFormat";
 
 type Mode = "idle" | "drawing";
 type AppPage = "map" | "results" | "editor";
@@ -137,8 +138,8 @@ function ResultsPage({
   const { bounds, areaSqKm, points } = area;
   const centerLat = ((bounds.north + bounds.south) / 2).toFixed(4);
   const centerLng = ((bounds.east + bounds.west) / 2).toFixed(4);
-  const widthKm = (((bounds.east - bounds.west) * Math.PI * 6371 * Math.cos((((bounds.north + bounds.south) / 2) * Math.PI) / 180)) / 180).toFixed(1);
-  const heightKm = (((bounds.north - bounds.south) * Math.PI * 6371) / 180).toFixed(1);
+  const widthKm = Math.abs(((bounds.east - bounds.west) * Math.PI * 6371 * Math.cos((((bounds.north + bounds.south) / 2) * Math.PI) / 180)) / 180);
+  const heightKm = Math.abs(((bounds.north - bounds.south) * Math.PI * 6371) / 180);
 
   return (
     <div
@@ -159,7 +160,7 @@ function ResultsPage({
         <div style={{ flex: 1, padding: "0 24px", display: "flex", alignItems: "center", gap: 10 }}>
           <span style={{ fontSize: 11, letterSpacing: "0.12em", color: "#2e3a1f88", textTransform: "uppercase" }}>Vybraná oblast</span>
           <span style={{ color: "#2e3a1f44", fontSize: 11 }}>·</span>
-          <span style={{ fontSize: 13, color: "#2e3a1f", fontStyle: "italic" }}>{areaSqKm < 1 ? `${(areaSqKm * 100).toFixed(1)} ha` : `${areaSqKm.toFixed(1)} km²`}</span>
+          <span style={{ fontSize: 13, color: "#2e3a1f", fontStyle: "italic" }}>{formatAreaByMagnitude(areaSqKm)}</span>
           <span style={{ color: "#2e3a1f44", fontSize: 11 }}>·</span>
           <span style={{ fontSize: 13, color: "#2e3a1f99" }}>{points.length} vrcholů</span>
         </div>
@@ -197,10 +198,10 @@ function ResultsPage({
                 </div>
                 <div style={{ flex: 1, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1, background: "#2e3a1f18", border: "1.5px solid #2e3a1f22", borderRadius: 4, overflow: "hidden" }}>
                   {[
-                    { label: "Celková plocha", value: areaSqKm < 1 ? `${(areaSqKm * 100).toFixed(1)} ha` : `${areaSqKm.toFixed(1)} km²` },
+                    { label: "Celková plocha", value: formatAreaByMagnitude(areaSqKm) },
                     { label: "Vrcholy",         value: points.length },
-                    { label: "Šířka",           value: `~${widthKm} km` },
-                    { label: "Výška",           value: `~${heightKm} km` },
+                    { label: "Šířka",           value: formatDistanceByMagnitude(widthKm) },
+                    { label: "Výška",           value: formatDistanceByMagnitude(heightKm) },
                     { label: "Střed. šířka",    value: `${centerLat}° N` },
                     { label: "Střed. délka",    value: `${centerLng}° E` },
                   ].map(({ label, value }) => (

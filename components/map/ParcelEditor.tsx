@@ -4,6 +4,7 @@ import type * as React from "react";
 import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { ITEMS, type Item } from "../encyclopedia/itemData";
+import { formatAreaByMagnitude } from "./areaFormat";
 
 const StlPreview = dynamic(() => import("../StlPreview"), { ssr: false });
 
@@ -888,7 +889,7 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
       ctx.font = `${11 / zoom}px sans-serif`;
       ctx.fillStyle = labelColor; ctx.textAlign = "left"; ctx.textBaseline = "top";
       ctx.fillText(
-        area.areaSqKm < 1 ? `${(area.areaSqKm * 100).toFixed(1)} ha` : `${area.areaSqKm.toFixed(1)} km²`,
+        formatAreaByMagnitude(area.areaSqKm),
         worldPts[0][0] + 8 / zoom, worldPts[0][1] + 8 / zoom
       );
       ctx.restore();
@@ -1297,7 +1298,7 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
           </span>
           <span style={{ color: "#2e3a1f33" }}>·</span>
           <span style={{ fontSize: 12, color: "#2e3a1f66", fontStyle: "italic" }}>
-            {area.areaSqKm < 1 ? `${(area.areaSqKm * 100).toFixed(1)} ha` : `${area.areaSqKm.toFixed(1)} km²`}
+            {formatAreaByMagnitude(area.areaSqKm)}
           </span>
         </div>
 
