@@ -92,7 +92,7 @@ export const ITEMS: Item[] = [
     modelPath: rostlinnaStenaModelPath,
     dimensionsM: rostlinnaStenaDimensions,
     waterNeeded: true,
-    tags: ["modulární", "brána", "venkovní"],
+    tags: ["modulární", "stěna", "venkovní"],
     specs: {
       "Barva": "Šedo-hnědá",
     },

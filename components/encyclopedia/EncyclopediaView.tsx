@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { ITEMS, CATEGORIES, type Item, type Category } from "./itemData";
 
 const COST_COLOR: Record<string, string> = {
@@ -11,6 +12,143 @@ const COST_COLOR: Record<string, string> = {
 const BADGE = "text-xs font-medium px-2.5 py-1 rounded-full";
 const COST_LABEL = { low: "Nízké", medium: "Střední", high: "Vysoké" } as const;
 const MAINT_LABEL = { low: "Nízká", medium: "Střední", high: "Vysoká" } as const;
+
+function normalizeSearchText(value: string): string {
+  return value
+    .toLocaleLowerCase("cs-CZ")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function splitSearchTerms(value: string): string[] {
+  const cleaned = normalizeSearchText(value).replace(/[^a-z0-9]+/g, " ").trim();
+  if (!cleaned) return [];
+  return [...new Set(cleaned.split(/\s+/).filter(Boolean))];
+}
+
+function toSearchSlug(value: string): string {
+  return normalizeSearchText(value)
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function getCostSearchAliases(cost: Item["cost"]): string[] {
+  if (cost === "low") return ["low", "nizke", "nizky", "levne", "levny", "cheap"];
+  if (cost === "medium") return ["medium", "stredni", "prumerne", "mid", "average"];
+  return ["high", "vysoke", "vysoky", "drahe", "drahy", "expensive", "premium"];
+}
+
+function getMaintenanceSearchAliases(maintenance: Item["maintenance"]): string[] {
+  if (maintenance === "low") return ["nizka", "nizke", "malo", "snadna", "easy", "minimalni"];
+  if (maintenance === "medium") return ["stredni", "bezna", "normalni", "medium", "average"];
+  return ["vysoka", "vysoke", "narocna", "high", "demanding"];
+}
+
+function getWaterSearchAliases(waterNeeded: boolean): string[] {
+  if (waterNeeded) return ["voda", "zavlaha", "zalivka", "water", "watering"];
+  return ["bez-vody", "bezvody", "bez vody", "sucho", "dry", "no-water"];
+}
+
+interface ItemSearchIndex {
+  item: Item;
+  name: string;
+  description: string;
+  category: string;
+  material: string;
+  dimensions: string;
+  weight: string;
+  tags: string[];
+  specs: string[];
+  aliases: string[];
+}
+
+function buildSearchIndex(item: Item): ItemSearchIndex {
+  return {
+    item,
+    name: normalizeSearchText(item.name),
+    description: normalizeSearchText(item.description),
+    category: normalizeSearchText(item.category),
+    material: normalizeSearchText(item.material),
+    dimensions: normalizeSearchText(item.dimensions),
+    weight: normalizeSearchText(item.weight),
+    tags: item.tags.map((tag) => normalizeSearchText(tag)),
+    specs: Object.entries(item.specs).map(([key, value]) => normalizeSearchText(`${key} ${value}`)),
+    aliases: [
+      ...getCostSearchAliases(item.cost),
+      ...getMaintenanceSearchAliases(item.maintenance),
+      ...getWaterSearchAliases(item.waterNeeded),
+      normalizeSearchText(COST_LABEL[item.cost]),
+      normalizeSearchText(MAINT_LABEL[item.maintenance]),
+    ],
+  };
+}
+
+function scoreSearchMatch(index: ItemSearchIndex, query: string, terms: string[]): number {
+  let score = 0;
+
+  for (const term of terms) {
+    let matched = false;
+
+    if (index.name.includes(term)) {
+      score += index.name.startsWith(term) ? 55 : 42;
+      matched = true;
+    }
+    if (index.tags.some((tag) => tag.includes(term))) {
+      score += 30;
+      matched = true;
+    }
+    if (index.category.includes(term)) {
+      score += 24;
+      matched = true;
+    }
+    if (index.material.includes(term)) {
+      score += 20;
+      matched = true;
+    }
+    if (index.aliases.some((alias) => alias.includes(term))) {
+      score += 22;
+      matched = true;
+    }
+    if (index.specs.some((spec) => spec.includes(term))) {
+      score += 18;
+      matched = true;
+    }
+    if (index.description.includes(term)) {
+      score += 14;
+      matched = true;
+    }
+    if (index.dimensions.includes(term) || index.weight.includes(term)) {
+      score += 10;
+      matched = true;
+    }
+
+    if (!matched) return -1;
+  }
+
+  if (index.name === query) score += 130;
+  else if (index.name.startsWith(query)) score += 90;
+  else if (index.name.includes(query)) score += 58;
+
+  if (index.tags.some((tag) => tag.includes(query))) score += 40;
+  if (index.category.includes(query)) score += 34;
+  if (index.aliases.some((alias) => alias.includes(query))) score += 28;
+  if (index.description.includes(query)) score += 20;
+
+  return score;
+}
+
+function getSortComparator(sortBy: "name" | "cooling" | "cost"): (a: Item, b: Item) => number {
+  if (sortBy === "cooling") {
+    return (a, b) => b.coolingEffect - a.coolingEffect || a.name.localeCompare(b.name, "cs");
+  }
+  if (sortBy === "cost") {
+    const order = { low: 0, medium: 1, high: 2 };
+    return (a, b) => order[a.cost] - order[b.cost] || a.name.localeCompare(b.name, "cs");
+  }
+  return (a, b) => a.name.localeCompare(b.name, "cs");
+}
+
+const ITEM_SEARCH_INDEX = ITEMS.map(buildSearchIndex);
 
 function formatCZK(value: number): string {
   return `${value.toLocaleString("cs-CZ")} Kč`;
@@ -176,36 +314,54 @@ function DetailPanel({ item, onClose }: { item: Item; onClose: () => void }) {
 }
 
 export default function EncyclopediaView() {
+  const searchParams = useSearchParams();
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState<Category | "Vše">("Vše");
   const [sortBy, setSortBy] = useState<"name" | "cooling" | "cost">("name");
   const [selected, setSelected] = useState<Item | null>(null);
+  const initialOpenApplied = useRef(false);
+
+  useEffect(() => {
+    if (initialOpenApplied.current) return;
+    initialOpenApplied.current = true;
+
+    const openParam = searchParams.get("open")?.trim();
+    if (!openParam) return;
+
+    const normalizedOpen = normalizeSearchText(openParam);
+    const requestedSlug = toSearchSlug(openParam);
+    const toOpen = ITEMS.find((item) => {
+      if (item.id === openParam) return true;
+      if (normalizeSearchText(item.name) === normalizedOpen) return true;
+      return toSearchSlug(item.name) === requestedSlug;
+    });
+
+    if (toOpen) setSelected(toOpen);
+  }, [searchParams]);
 
   const filtered = useMemo(() => {
-    let items = ITEMS;
+    const comparator = getSortComparator(sortBy);
+    let items = ITEM_SEARCH_INDEX;
 
     if (activeCategory !== "Vše") {
-      items = items.filter((i) => i.category === activeCategory);
+      items = items.filter((entry) => entry.item.category === activeCategory);
     }
 
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      items = items.filter(
-        (i) =>
-          i.name.toLowerCase().includes(q) ||
-          i.description.toLowerCase().includes(q) ||
-          i.tags.some((t) => t.includes(q))
-      );
+    const query = normalizeSearchText(search.trim());
+    const terms = splitSearchTerms(query);
+
+    if (terms.length === 0) {
+      return items.map((entry) => entry.item).sort(comparator);
     }
 
-    return [...items].sort((a, b) => {
-      if (sortBy === "cooling") return b.coolingEffect - a.coolingEffect;
-      if (sortBy === "cost") {
-        const order = { low: 0, medium: 1, high: 2 };
-        return order[a.cost] - order[b.cost];
-      }
-      return a.name.localeCompare(b.name);
-    });
+    return items
+      .map((entry) => ({
+        item: entry.item,
+        score: scoreSearchMatch(entry, query, terms),
+      }))
+      .filter((entry) => entry.score >= 0)
+      .sort((a, b) => b.score - a.score || comparator(a.item, b.item))
+      .map((entry) => entry.item);
   }, [search, activeCategory, sortBy]);
 
   return (
@@ -230,7 +386,7 @@ export default function EncyclopediaView() {
             <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-light text-sm">🔍</span>
             <input
               type="text"
-              placeholder="Hledat prvky, štítky, materiály…"
+              placeholder="Hledat název, štítky, materiál, specifikace…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="w-full pl-9 pr-4 py-2.5 bg-bg border border-btn/40 rounded-full text-sm text-text placeholder-text-light focus:outline-none focus:border-btn focus:ring-2 focus:ring-btn/20"
