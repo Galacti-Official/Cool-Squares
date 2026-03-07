@@ -1,16 +1,18 @@
+import Image from "next/image";
+
 const features = [
   {
-    icon: "🌳",
+    icon: "/leaf.svg",
     title: "Rostlinná stěna",
     desc: "Živá stěna tvořena psím vínem",
   },
   {
-    icon: "💧",
+    icon: "/planter.svg",
     title: "Květináče s auto-zavlažováním",
     desc: "Zavlažovací systém s využitím dešťové vody",
   },
   {
-    icon: "📡",
+    icon: "/accessories.svg",
     title: "Příslušenství",
     desc: "IoT Senzory, solární panely, vodní nádrže a další",
   }
@@ -27,9 +29,15 @@ export default function Features() {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-          {features.map((f, i) => (
+          {features.map((f) => (
             <div key={f.title} className="h-full bg-fg border border-btn/35 rounded-2xl p-7 hover:-translate-y-1 hover:shadow-[0_16px_40px_rgba(46,58,31,0.12)] transition-all duration-300">
-              <span className="text-3xl block mb-4">{f.icon}</span>
+              <Image
+                src={f.icon}
+                alt={`${f.title} ikona`}
+                width={36}
+                height={36}
+                className="mb-4 block h-9 w-9"
+              />
               <h3 className="font-display text-xl text-text mb-2">{f.title}</h3>
               <p className="text-text-mid text-sm leading-relaxed">{f.desc}</p>
             </div>

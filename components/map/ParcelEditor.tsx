@@ -2,7 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 
-interface SelectedArea {
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+export interface SelectedArea {
   points: [number, number][];
   bounds: { north: number; south: number; east: number; west: number };
   areaSqKm: number;
@@ -15,25 +17,50 @@ interface SatelliteTile {
   img: HTMLImageElement;
 }
 
+interface PlacedElement {
+  id: string;
+  type: string;
+  x: number;        // world px
+  y: number;        // world px
+  wPx: number;      // world px (from metres * pixelsPerMetre)
+  hPx: number;      // world px
+  rotation: number;
+  note?: string;
+}
+
+interface Viewport {
+  x: number;      // pan x (screen offset)
+  y: number;      // pan y (screen offset)
+  zoom: number;
+  angle: number;  // radians
+}
+
+interface PlanStats {
+  totalMin: number;
+  totalMax: number;
+  tempDelta: number;    // negative = cooling (°C)
+  coveragePct: number;  // % of parcel area covered by elements
+  breakdown: { label: string; icon: string; count: number; min: number; max: number }[];
+}
+
+// ─── Tile helpers ─────────────────────────────────────────────────────────────
+
 function lngToTileX(lng: number, z: number): number {
-  const n = 2 ** z;
-  return Math.floor(((lng + 180) / 360) * n);
+  return Math.floor(((lng + 180) / 360) * 2 ** z);
 }
-
 function latToTileY(lat: number, z: number): number {
-  const n = 2 ** z;
   const latRad = (lat * Math.PI) / 180;
-  return Math.floor((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2 * n);
+  return Math.floor((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2 * 2 ** z);
 }
-
 function tileXToLng(x: number, z: number): number {
-  return (x / (2 ** z)) * 360 - 180;
+  return (x / 2 ** z) * 360 - 180;
 }
-
 function tileYToLat(y: number, z: number): number {
-  const n = Math.PI - (2 * Math.PI * y) / (2 ** z);
+  const n = Math.PI - (2 * Math.PI * y) / 2 ** z;
   return (180 / Math.PI) * Math.atan(0.5 * (Math.exp(n) - Math.exp(-n)));
 }
+
+// ─── Geo → canvas projection ──────────────────────────────────────────────────
 
 function makeProjection(
   points: [number, number][],
@@ -54,20 +81,12 @@ function makeProjection(
   const R = 6371000;
   const bboxWMetres = ((maxLng - minLng) * Math.PI / 180) * R * Math.cos(midLat * Math.PI / 180);
 
-  
   const drawW = canvasW - pad * 2;
   const drawH = canvasH - pad * 2;
-
   const bboxW = maxLng - minLng || 0.0001;
   const bboxH = maxLat - minLat || 0.0001;
-  const scaleX = drawW / bboxW;
-  const scaleY = drawH / bboxH;
-  const scaleDeg = Math.min(scaleX, scaleY);
-
-  const pixelsPerMetre = bboxWMetres > 0
-    ? (bboxW * scaleDeg) / bboxWMetres
-    : 1;
-
+  const scaleDeg = Math.min(drawW / bboxW, drawH / bboxH);
+  const pixelsPerMetre = bboxWMetres > 0 ? (bboxW * scaleDeg) / bboxWMetres : 1;
 
   const fittedW = bboxW * scaleDeg;
   const fittedH = bboxH * scaleDeg;
@@ -78,7 +97,6 @@ function makeProjection(
     offsetX + (lng - minLng) * scaleDeg,
     offsetY + (maxLat - lat) * scaleDeg,
   ];
-
   const unproject = ([x, y]: [number, number]): [number, number] => [
     maxLat - (y - offsetY) / scaleDeg,
     minLng + (x - offsetX) / scaleDeg,
@@ -87,71 +105,125 @@ function makeProjection(
   return { project, unproject, pixelsPerMetre };
 }
 
+// ─── Element catalog ──────────────────────────────────────────────────────────
+
 const ELEMENT_CATALOG = [
   {
     category: "Nádoby",
     items: [
-      { type: "pot_small",    label: "Malý květináč",  icon: "🪴", w: 0.30, h: 0.30, shape: "circle",  color: "#8B6F47", desc: "ø 30 cm" },
-      { type: "pot_large",    label: "Velký květináč", icon: "🏺", w: 0.50, h: 0.50, shape: "circle",  color: "#7A5C3A", desc: "ø 50 cm" },
-      { type: "planter_box",  label: "Truhlík",        icon: "▭",  w: 1.20, h: 0.50, shape: "rect",    color: "#6B4F2E", desc: "120×50 cm" },
-      { type: "window_box",   label: "Okenní truhlík", icon: "▭",  w: 0.80, h: 0.25, shape: "rect",    color: "#8B6F47", desc: "80×25 cm" },
-      { type: "hanging",      label: "Závěsný koš",    icon: "⊕",  w: 0.30, h: 0.30, shape: "circle",  color: "#9E7B56", desc: "ø 30 cm" },
+      { type: "pot_small",    label: "Malý květináč",     icon: "🪴", w: 0.30, h: 0.30, shape: "circle",  color: "#8B6F47", desc: "ø 30 cm" },
+      { type: "pot_large",    label: "Velký květináč",    icon: "🏺", w: 0.50, h: 0.50, shape: "circle",  color: "#7A5C3A", desc: "ø 50 cm" },
+      { type: "planter_box",  label: "Truhlík",           icon: "▭",  w: 1.20, h: 0.50, shape: "rect",    color: "#6B4F2E", desc: "120×50 cm" },
+      { type: "window_box",   label: "Okenní truhlík",    icon: "▭",  w: 0.80, h: 0.25, shape: "rect",    color: "#8B6F47", desc: "80×25 cm" },
+      { type: "hanging",      label: "Závěsný koš",       icon: "⊕",  w: 0.30, h: 0.30, shape: "circle",  color: "#9E7B56", desc: "ø 30 cm" },
     ],
   },
   {
     category: "Pěstební záhony",
     items: [
-      { type: "bed_small",    label: "Vyvýšený záhon S", icon: "▬",  w: 1.20, h: 0.80, shape: "rect",    color: "#4A7C59", desc: "120×80 cm" },
-      { type: "bed_medium",   label: "Vyvýšený záhon M", icon: "▬",  w: 2.00, h: 1.00, shape: "rect",    color: "#3D6B4A", desc: "200×100 cm" },
-      { type: "bed_large",    label: "Vyvýšený záhon L", icon: "▬",  w: 3.00, h: 1.20, shape: "rect",    color: "#336040", desc: "300×120 cm" },
-      { type: "bed_round",    label: "Kulatý záhon",     icon: "◯",  w: 1.20, h: 1.20, shape: "circle",  color: "#4A7C59", desc: "ø 120 cm" },
-      { type: "keyhole",      label: "Záhon keyhole",    icon: "◌",  w: 1.80, h: 1.80, shape: "keyhole", color: "#5A8C6A", desc: "ø 180 cm" },
+      { type: "bed_small",    label: "Vyvýšený záhon S",  icon: "▬",  w: 1.20, h: 0.80, shape: "rect",    color: "#4A7C59", desc: "120×80 cm" },
+      { type: "bed_medium",   label: "Vyvýšený záhon M",  icon: "▬",  w: 2.00, h: 1.00, shape: "rect",    color: "#3D6B4A", desc: "200×100 cm" },
+      { type: "bed_large",    label: "Vyvýšený záhon L",  icon: "▬",  w: 3.00, h: 1.20, shape: "rect",    color: "#336040", desc: "300×120 cm" },
+      { type: "bed_round",    label: "Kulatý záhon",      icon: "◯",  w: 1.20, h: 1.20, shape: "circle",  color: "#4A7C59", desc: "ø 120 cm" },
+      { type: "keyhole",      label: "Záhon keyhole",     icon: "◌",  w: 1.80, h: 1.80, shape: "keyhole", color: "#5A8C6A", desc: "ø 180 cm" },
     ],
   },
   {
     category: "Konstrukce",
     items: [
-      { type: "trellis",      label: "Mříž",             icon: "⊞",  w: 2.00, h: 0.20, shape: "rect",    color: "#8B7355", desc: "200×20 cm" },
-      { type: "arch",         label: "Zahradní oblouk",  icon: "⌢",  w: 0.80, h: 0.30, shape: "arch",    color: "#7A6445", desc: "80×30 cm" },
-      { type: "coldframe",    label: "Pařeniště",        icon: "▦",  w: 1.20, h: 0.80, shape: "rect",    color: "#6B8C9E", desc: "120×80 cm" },
-      { type: "greenhouse",   label: "Mini skleník",     icon: "🏠", w: 2.00, h: 1.50, shape: "rect",    color: "#82A8BC", desc: "200×150 cm" },
-      { type: "compost",      label: "Kompostér",        icon: "♻",  w: 0.80, h: 0.80, shape: "rect",    color: "#7A6840", desc: "80×80 cm" },
+      { type: "trellis",      label: "Mříž",              icon: "⊞",  w: 2.00, h: 0.20, shape: "rect",    color: "#8B7355", desc: "200×20 cm" },
+      { type: "arch",         label: "Zahradní oblouk",   icon: "⌢",  w: 0.80, h: 0.30, shape: "arch",    color: "#7A6445", desc: "80×30 cm" },
+      { type: "coldframe",    label: "Pařeniště",         icon: "▦",  w: 1.20, h: 0.80, shape: "rect",    color: "#6B8C9E", desc: "120×80 cm" },
+      { type: "greenhouse",   label: "Mini skleník",      icon: "🏠", w: 2.00, h: 1.50, shape: "rect",    color: "#82A8BC", desc: "200×150 cm" },
+      { type: "compost",      label: "Kompostér",         icon: "♻",  w: 0.80, h: 0.80, shape: "rect",    color: "#7A6840", desc: "80×80 cm" },
     ],
   },
   {
     category: "Voda",
     items: [
-      { type: "water_barrel", label: "Sud na vodu",    icon: "⬤",  w: 0.60, h: 0.60, shape: "circle",  color: "#5B7FA0", desc: "200 L" },
-      { type: "water_tank",   label: "IBC nádrž",      icon: "▣",  w: 1.00, h: 1.20, shape: "rect",    color: "#4A6E8F", desc: "1000 L" },
-      { type: "pond",         label: "Mini jezírko",   icon: "◯",  w: 1.50, h: 1.00, shape: "ellipse", color: "#3D6B8A", desc: "150×100 cm" },
-      { type: "tap",          label: "Vodovodní bod",  icon: "⊕",  w: 0.10, h: 0.10, shape: "circle",  color: "#5B7FA0", desc: "kohoutek" },
+      { type: "water_barrel", label: "Sud na vodu",       icon: "⬤",  w: 0.60, h: 0.60, shape: "circle",  color: "#5B7FA0", desc: "200 L" },
+      { type: "water_tank",   label: "IBC nádrž",         icon: "▣",  w: 1.00, h: 1.20, shape: "rect",    color: "#4A6E8F", desc: "1000 L" },
+      { type: "pond",         label: "Mini jezírko",      icon: "◯",  w: 1.50, h: 1.00, shape: "ellipse", color: "#3D6B8A", desc: "150×100 cm" },
+      { type: "tap",          label: "Vodovodní bod",     icon: "⊕",  w: 0.10, h: 0.10, shape: "circle",  color: "#5B7FA0", desc: "kohoutek" },
     ],
   },
   {
     category: "Cesty",
     items: [
-      { type: "path_h",       label: "Cesta (V)",      icon: "—",  w: 2.00, h: 0.60, shape: "rect",    color: "#C4B89A", desc: "200×60 cm" },
-      { type: "path_v",       label: "Cesta (S)",      icon: "|",  w: 0.60, h: 2.00, shape: "rect",    color: "#C4B89A", desc: "60×200 cm" },
-      { type: "seating",      label: "Posezení",       icon: "◻",  w: 3.00, h: 3.00, shape: "rect",    color: "#B8A882", desc: "300×300 cm" },
+      { type: "path_h",       label: "Cesta (V)",         icon: "—",  w: 2.00, h: 0.60, shape: "rect",    color: "#C4B89A", desc: "200×60 cm" },
+      { type: "path_v",       label: "Cesta (S)",         icon: "|",  w: 0.60, h: 2.00, shape: "rect",    color: "#C4B89A", desc: "60×200 cm" },
+      { type: "seating",      label: "Posezení",          icon: "◻",  w: 3.00, h: 3.00, shape: "rect",    color: "#B8A882", desc: "300×300 cm" },
     ],
   },
 ];
 
-const SNAP = 5; 
+// ─── Pricing (CZK, min–max) ───────────────────────────────────────────────────
+// Approximate retail prices in Czech Republic.
+
+const ELEMENT_PRICES: Record<string, { min: number; max: number }> = {
+  pot_small:    { min:  150, max:   450 },
+  pot_large:    { min:  400, max:  1200 },
+  planter_box:  { min:  600, max:  2200 },
+  window_box:   { min:  250, max:   800 },
+  hanging:      { min:  180, max:   600 },
+  bed_small:    { min:  800, max:  2800 },
+  bed_medium:   { min: 1400, max:  4500 },
+  bed_large:    { min: 2200, max:  7000 },
+  bed_round:    { min: 1000, max:  3200 },
+  keyhole:      { min: 1800, max:  5500 },
+  trellis:      { min:  600, max:  2000 },
+  arch:         { min:  900, max:  3500 },
+  coldframe:    { min: 1200, max:  4000 },
+  greenhouse:   { min: 3500, max: 12000 },
+  compost:      { min:  500, max:  1800 },
+  water_barrel: { min:  600, max:  1800 },
+  water_tank:   { min: 2800, max:  6500 },
+  pond:         { min: 1500, max:  5500 },
+  tap:          { min:  300, max:   900 },
+  path_h:       { min:  400, max:  1400 },
+  path_v:       { min:  400, max:  1400 },
+  seating:      { min: 2500, max:  9000 },
+};
+
+// ─── Cooling coefficients ─────────────────────────────────────────────────────
+// °C reduction per m² of element footprint, based on urban heat island /
+// evapotranspiration literature.
+
+const ELEMENT_COOLING: Record<string, number> = {
+  greenhouse:   0.18,
+  coldframe:    0.10,
+  arch:         0.08,
+  trellis:      0.07,
+  pond:         0.22,
+  water_barrel: 0.06,
+  water_tank:   0.08,
+  tap:          0.01,
+  keyhole:      0.12,
+  bed_large:    0.11,
+  bed_medium:   0.10,
+  bed_small:    0.09,
+  bed_round:    0.09,
+  pot_large:    0.06,
+  pot_small:    0.04,
+  planter_box:  0.05,
+  window_box:   0.03,
+  hanging:      0.03,
+  compost:      0.04,
+  path_h:       0.01,
+  path_v:       0.01,
+  seating:      0.02,
+};
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function formatCZK(n: number): string {
+  return n.toLocaleString("cs-CZ") + "\u00a0Kč";
+}
+
+const SNAP = 5;
 const HIT_PADDING_PX = 12;
 function snapTo(v: number) { return Math.round(v / SNAP) * SNAP; }
 function genId() { return Math.random().toString(36).slice(2, 9); }
-
-interface PlacedElement {
-  id: string;
-  type: string;
-  x: number;     
-  y: number;    
-  wPx: number;   
-  hPx: number;   
-  rotation: number;
-  note?: string;
-}
 
 function pointInPolygon(point: [number, number], polygon: [number, number][]): boolean {
   const [x, y] = point;
@@ -166,22 +238,49 @@ function pointInPolygon(point: [number, number], polygon: [number, number][]): b
   return inside;
 }
 
-function rectWithinPolygon(
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  polygon: [number, number][]
-): boolean {
-  const corners: [number, number][] = [
-    [x, y],
-    [x + w, y],
-    [x + w, y + h],
-    [x, y + h],
-  ];
-  return corners.every((corner) => pointInPolygon(corner, polygon));
+function rectWithinPolygon(x: number, y: number, w: number, h: number, polygon: [number, number][]): boolean {
+  const corners: [number, number][] = [[x, y], [x + w, y], [x + w, y + h], [x, y + h]];
+  return corners.every(corner => pointInPolygon(corner, polygon));
 }
 
+// ─── Plan stats ───────────────────────────────────────────────────────────────
+
+function computePlanStats(elements: PlacedElement[], parcelAreaSqM: number, pixelsPerMetre: number): PlanStats {
+  const ppm2 = pixelsPerMetre * pixelsPerMetre;
+  const byType: Record<string, { count: number; min: number; max: number; areaSqM: number }> = {};
+  let totalMin = 0, totalMax = 0, totalCooling = 0, totalCoveredSqM = 0;
+
+  elements.forEach(el => {
+    const price = ELEMENT_PRICES[el.type] ?? { min: 0, max: 0 };
+    const cooling = ELEMENT_COOLING[el.type] ?? 0;
+    const areaSqM = (el.wPx * el.hPx) / ppm2;
+    totalMin += price.min;
+    totalMax += price.max;
+    totalCooling += cooling * areaSqM;
+    totalCoveredSqM += areaSqM;
+    if (!byType[el.type]) byType[el.type] = { count: 0, min: 0, max: 0, areaSqM: 0 };
+    byType[el.type].count++;
+    byType[el.type].min += price.min;
+    byType[el.type].max += price.max;
+    byType[el.type].areaSqM += areaSqM;
+  });
+
+  const parcelArea = Math.max(parcelAreaSqM, 1);
+  const tempDelta = Math.max(-(totalCooling / Math.sqrt(parcelArea)), -3.0);
+  const coveragePct = Math.min(100, (totalCoveredSqM / parcelArea) * 100);
+
+  const allItems = ELEMENT_CATALOG.flatMap(c => c.items);
+  const breakdown = Object.entries(byType)
+    .map(([type, data]) => {
+      const cat = allItems.find(i => i.type === type);
+      return { label: cat?.label ?? type, icon: cat?.icon ?? "?", ...data };
+    })
+    .sort((a, b) => b.max - a.max);
+
+  return { totalMin, totalMax, tempDelta, coveragePct, breakdown };
+}
+
+// ─── Canvas shape renderer ────────────────────────────────────────────────────
 
 function drawShape(
   ctx: CanvasRenderingContext2D,
@@ -208,8 +307,7 @@ function drawShape(
     ctx.beginPath();
     ctx.ellipse(0, 0, hw, hh, 0, 0, Math.PI * 2);
     ctx.fill(); ctx.stroke();
-    ctx.strokeStyle = color + "44";
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = color + "44"; ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.ellipse(0, 0, hw * 0.65, hh * 0.65, 0, 0, Math.PI * 2);
     ctx.stroke();
@@ -221,8 +319,7 @@ function drawShape(
     ctx.beginPath();
     (ctx as any).roundRect(-hw, -hh, w, h, 3);
     ctx.fill(); ctx.stroke();
-    ctx.strokeStyle = color + "44";
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = color + "44"; ctx.lineWidth = 1;
     const step = Math.max(15, Math.min(hw, hh) * 0.4);
     for (let ox = -hw + step; ox < hw; ox += step) {
       ctx.beginPath(); ctx.moveTo(ox, -hh + 4); ctx.lineTo(ox, hh - 4); ctx.stroke();
@@ -231,8 +328,7 @@ function drawShape(
     ctx.beginPath();
     (ctx as any).roundRect(-hw, -hh, w, h, 6);
     ctx.fill(); ctx.stroke();
-    ctx.strokeStyle = color + "55";
-    ctx.lineWidth = 2;
+    ctx.strokeStyle = color + "55"; ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.arc(0, hh, hw * 0.7, Math.PI, 0);
     ctx.stroke();
@@ -240,8 +336,7 @@ function drawShape(
     ctx.beginPath();
     ctx.ellipse(0, 0, hw, hh, 0, 0, Math.PI * 2);
     ctx.fill(); ctx.stroke();
-    ctx.strokeStyle = color + "44";
-    ctx.lineWidth = 1.5;
+    ctx.strokeStyle = color + "44"; ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.ellipse(0, 0, hw * 0.5, hh * 0.5, 0, 0, Math.PI * 2);
     ctx.stroke();
@@ -253,34 +348,26 @@ function drawShape(
     ctx.strokeRect(-hw, -hh, w, h);
   }
 
-  const showInlineLabel = !selected && !hovered;
-  if (showInlineLabel) {
+  const showLabel = !selected && !hovered;
+  if (showLabel) {
     ctx.shadowBlur = 0;
     ctx.fillStyle = "#2e3a1fcc";
     ctx.font = `${Math.max(9, Math.min(11, w / 10))}px sans-serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    const label = item.label.length > 12 ? item.label.slice(0, 11) + "…" : item.label;
-    ctx.fillText(label, 0, 0);
+    ctx.fillText(item.label.length > 12 ? item.label.slice(0, 11) + "…" : item.label, 0, 0);
   }
 
   if (selected) {
     ctx.shadowBlur = 0;
     ctx.strokeStyle = "#2e3a1f";
-    ctx.lineWidth = 2.5;
-    ctx.setLineDash([]);
+    ctx.lineWidth = 2.5; ctx.setLineDash([]);
     if (shape === "circle" || shape === "ellipse" || shape === "keyhole") {
-      ctx.beginPath();
-      ctx.ellipse(0, 0, hw + 5, hh + 5, 0, 0, Math.PI * 2);
-      ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(0, 0, hw + 5, hh + 5, 0, 0, Math.PI * 2); ctx.stroke();
     } else {
       ctx.strokeRect(-hw - 5, -hh - 5, w + 10, h + 10);
     }
-
-    // Corner ticks for stronger selected-state readability while dragging.
-    const tick = 5;
-    const ox = hw + 7;
-    const oy = hh + 7;
+    const tick = 5, ox = hw + 7, oy = hh + 7;
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(-ox, -oy + tick); ctx.lineTo(-ox, -oy); ctx.lineTo(-ox + tick, -oy);
@@ -293,51 +380,41 @@ function drawShape(
   ctx.restore();
 }
 
+// ─── Sidebar catalog item ─────────────────────────────────────────────────────
+
 function CatalogItem({ item, onDragStart }: { item: any; onDragStart: (e: React.DragEvent, item: any) => void }) {
+  const p = ELEMENT_PRICES[item.type];
+  const priceLabel = p
+    ? `${p.min >= 1000 ? `${(p.min / 1000).toFixed(p.min % 1000 === 0 ? 0 : 1)}k` : p.min}–${p.max >= 1000 ? `${(p.max / 1000).toFixed(p.max % 1000 === 0 ? 0 : 1)}k` : p.max} Kč`
+    : null;
+
   return (
     <div
       draggable
-      onDragStart={(e) => onDragStart(e, item)}
-      title={item.desc}
-      style={{
-        display: "flex", flexDirection: "column", alignItems: "center",
-        gap: 4, padding: "10px 6px", cursor: "grab",
-        border: "1.5px solid transparent", borderRadius: 4,
-        transition: "all 0.12s", userSelect: "none",
-      }}
-      onMouseEnter={e => {
-        (e.currentTarget as HTMLElement).style.borderColor = "#2e3a1f33";
-        (e.currentTarget as HTMLElement).style.background = "#2e3a1f08";
-      }}
-      onMouseLeave={e => {
-        (e.currentTarget as HTMLElement).style.borderColor = "transparent";
-        (e.currentTarget as HTMLElement).style.background = "transparent";
-      }}
+      onDragStart={e => onDragStart(e, item)}
+      title={`${item.desc}${p ? ` · ${formatCZK(p.min)}–${formatCZK(p.max)}` : ""}`}
+      style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, padding: "10px 6px", cursor: "grab", border: "1.5px solid transparent", borderRadius: 4, transition: "all 0.12s", userSelect: "none" }}
+      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = "#2e3a1f33"; (e.currentTarget as HTMLElement).style.background = "#2e3a1f08"; }}
+      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = "transparent"; (e.currentTarget as HTMLElement).style.background = "transparent"; }}
     >
-      <div style={{
-        width: 36, height: 36, borderRadius: 4,
-        background: item.color + "33",
-        border: `1.5px solid ${item.color}66`,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        fontSize: 18,
-      }}>
+      <div style={{ width: 36, height: 36, borderRadius: 4, background: item.color + "33", border: `1.5px solid ${item.color}66`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>
         {item.icon}
       </div>
-      <span style={{
-        fontSize: 9, letterSpacing: "0.06em", textTransform: "uppercase",
-        color: "#2e3a1f88", textAlign: "center", lineHeight: 1.2, maxWidth: 52,
-        fontFamily: "inherit",
-      }}>{item.label}</span>
+      <span style={{ fontSize: 9, letterSpacing: "0.06em", textTransform: "uppercase", color: "#2e3a1f88", textAlign: "center", lineHeight: 1.2, maxWidth: 52, fontFamily: "inherit" }}>
+        {item.label}
+      </span>
+      {priceLabel && (
+        <span style={{ fontSize: 8, color: "#2e3a1f55", fontFamily: "inherit", textAlign: "center" }}>
+          {priceLabel}
+        </span>
+      )}
     </div>
   );
 }
 
-function PropertiesPanel({
-  item,
-  selectedCount,
-  onChange,
-  onDelete,
-}: {
+// ─── Properties panel ─────────────────────────────────────────────────────────
+
+function PropertiesPanel({ item, selectedCount, onChange, onDelete }: {
   item: PlacedElement | null;
   selectedCount: number;
   onChange: (item: PlacedElement) => void;
@@ -345,82 +422,186 @@ function PropertiesPanel({
 }) {
   if (!item) return (
     <div style={{ padding: "20px 16px", color: "#2e3a1f55", fontSize: 12, fontStyle: "italic", textAlign: "center" }}>
-      {selectedCount > 1
-        ? "Vybráno více prvků"
-        : "Vyberte prvek pro úpravu jeho vlastností"}
+      {selectedCount > 1 ? "Vybráno více prvků" : "Vyberte prvek pro úpravu jeho vlastností"}
     </div>
   );
-
   const catalogItem = ELEMENT_CATALOG.flatMap(c => c.items).find(i => i.type === item.type);
+  const price = ELEMENT_PRICES[item.type];
 
   return (
     <div style={{ padding: "16px" }}>
-      <div style={{ fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "#2e3a1f88", marginBottom: 12 }}>
-        Vlastnosti
-      </div>
+      <div style={{ fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "#2e3a1f88", marginBottom: 12 }}>Vlastnosti</div>
       <div style={{ marginBottom: 12 }}>
         <div style={{ fontSize: 15, color: "#2e3a1f", fontStyle: "italic", marginBottom: 2 }}>{catalogItem?.label}</div>
         <div style={{ fontSize: 11, color: "#2e3a1f55" }}>{catalogItem?.desc}</div>
-        <div style={{ fontSize: 10, color: "#2e3a1f44", marginTop: 4 }}>
-          {item.wPx}×{item.hPx} px na plátně
-        </div>
+        {price && (
+          <div style={{ fontSize: 10, color: "#2e3a1f77", marginTop: 4 }}>
+            {formatCZK(price.min)} – {formatCZK(price.max)}
+          </div>
+        )}
       </div>
       <div style={{ marginBottom: 10 }}>
-        <div style={{ fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "#2e3a1f77", marginBottom: 4 }}>
-          Rotace (°)
-        </div>
+        <div style={{ fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "#2e3a1f77", marginBottom: 4 }}>Rotace (°)</div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <input
-            type="range" min={0} max={360} value={item.rotation || 0}
+          <input type="range" min={0} max={360} value={item.rotation || 0}
             onChange={e => onChange({ ...item, rotation: Number(e.target.value) })}
-            style={{ flex: 1, accentColor: "#2e3a1f" }}
-          />
-          <span style={{ fontSize: 11, color: "#2e3a1f", width: 32, textAlign: "right" }}>
-            {item.rotation || 0}°
-          </span>
+            style={{ flex: 1, accentColor: "#2e3a1f" }} />
+          <span style={{ fontSize: 11, color: "#2e3a1f", width: 32, textAlign: "right" }}>{item.rotation || 0}°</span>
         </div>
       </div>
       <div style={{ marginBottom: 10 }}>
-        <div style={{ fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "#2e3a1f77", marginBottom: 4 }}>
-          Poznámka
-        </div>
-        <textarea
-          value={item.note || ""}
-          onChange={e => onChange({ ...item, note: e.target.value })}
-          placeholder="Přidat poznámku…"
-          rows={2}
-          style={{
-            width: "100%", resize: "none", background: "#2e3a1f08",
-            border: "1.5px solid #2e3a1f22", borderRadius: 3,
-            padding: "6px 8px", fontSize: 12, fontFamily: "inherit",
-            color: "#2e3a1f", outline: "none", boxSizing: "border-box",
-          }}
-        />
+        <div style={{ fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "#2e3a1f77", marginBottom: 4 }}>Poznámka</div>
+        <textarea value={item.note || ""} onChange={e => onChange({ ...item, note: e.target.value })}
+          placeholder="Přidat poznámku…" rows={2}
+          style={{ width: "100%", resize: "none", background: "#2e3a1f08", border: "1.5px solid #2e3a1f22", borderRadius: 3, padding: "6px 8px", fontSize: 12, fontFamily: "inherit", color: "#2e3a1f", outline: "none", boxSizing: "border-box" }} />
       </div>
-      <button
-        onClick={onDelete}
-        style={{
-          width: "100%", padding: "8px", background: "none",
-          border: "1.5px solid #cc444422", borderRadius: 3,
-          color: "#cc4444", fontSize: 12, cursor: "pointer",
-          fontFamily: "inherit", letterSpacing: "0.04em",
-          transition: "all 0.15s",
-        }}
+      <button onClick={onDelete}
+        style={{ width: "100%", padding: "8px", background: "none", border: "1.5px solid #cc444422", borderRadius: 3, color: "#cc4444", fontSize: 12, cursor: "pointer", fontFamily: "inherit", letterSpacing: "0.04em", transition: "all 0.15s" }}
         onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "#cc444411"; }}
-        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "none"; }}
-      >
+        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "none"; }}>
         Odebrat prvek
       </button>
     </div>
   );
 }
 
-interface Viewport {
-  x: number;    
-  y: number;    
-  zoom: number;
-  angle: number;
+// ─── Plan Summary Bar ─────────────────────────────────────────────────────────
+
+function PlanSummaryBar({ stats, expanded, onToggle }: {
+  stats: PlanStats | null;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const hasElements = stats && stats.breakdown.length > 0;
+  const tempColor = !stats || stats.tempDelta === 0 ? "#2e3a1f66"
+    : stats.tempDelta < -1.5 ? "#2a7d4f"
+    : stats.tempDelta < -0.5 ? "#5a9e72"
+    : "#8ab89a";
+  const tempLabel = !stats || stats.tempDelta === 0 ? "—" : `${stats.tempDelta.toFixed(1)} °C`;
+  const coverLabel = stats ? `${stats.coveragePct.toFixed(0)}% pokryto` : "0% pokryto";
+
+  return (
+    <div style={{ flexShrink: 0, borderTop: "1.5px solid #2e3a1f22", background: "#F4F5E0", transition: "all 0.22s ease" }}>
+      {/* Always-visible summary row */}
+      <div onClick={onToggle}
+        style={{ height: 44, display: "flex", alignItems: "center", padding: "0 20px", cursor: "pointer", userSelect: "none" }}>
+        {/* Cost */}
+        <div style={{ display: "flex", alignItems: "baseline", gap: 6, minWidth: 220 }}>
+          <span style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "#2e3a1f77" }}>Celkem</span>
+          {hasElements
+            ? <span style={{ fontSize: 14, color: "#2e3a1f", fontStyle: "italic" }}>{formatCZK(stats!.totalMin)} – {formatCZK(stats!.totalMax)}</span>
+            : <span style={{ fontSize: 13, color: "#2e3a1f44", fontStyle: "italic" }}>žádné prvky</span>}
+        </div>
+        <div style={{ width: 1, height: 20, background: "#2e3a1f22", margin: "0 20px" }} />
+        {/* Temperature */}
+        <div style={{ display: "flex", alignItems: "baseline", gap: 6, minWidth: 160 }}>
+          <span style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "#2e3a1f77" }}>Ochlazení</span>
+          <span style={{ fontSize: 14, color: tempColor, fontStyle: "italic" }}>{hasElements ? tempLabel : "—"}</span>
+        </div>
+        <div style={{ width: 1, height: 20, background: "#2e3a1f22", margin: "0 20px" }} />
+        {/* Coverage */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1 }}>
+          <span style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "#2e3a1f77" }}>{coverLabel}</span>
+          {hasElements && (
+            <div style={{ flex: 1, maxWidth: 120, height: 4, borderRadius: 2, background: "#2e3a1f18", overflow: "hidden" }}>
+              <div style={{ height: "100%", borderRadius: 2, background: "#4A7C59", width: `${Math.min(100, stats!.coveragePct)}%`, transition: "width 0.3s ease" }} />
+            </div>
+          )}
+        </div>
+        {/* Toggle */}
+        <div style={{ fontSize: 10, color: "#2e3a1f55", letterSpacing: "0.06em", display: "flex", alignItems: "center", gap: 4 }}>
+          <span>{expanded ? "Skrýt" : "Podrobnosti"}</span>
+          <span style={{ fontSize: 12, display: "inline-block", transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>▾</span>
+        </div>
+      </div>
+
+      {/* Expanded breakdown */}
+      {expanded && (
+        <div style={{ borderTop: "1.5px solid #2e3a1f11", padding: "12px 20px 16px", display: "flex", gap: 32, flexWrap: "wrap" }}>
+          {/* Cost breakdown */}
+          <div style={{ flex: 1, minWidth: 260 }}>
+            <div style={{ fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "#2e3a1f66", marginBottom: 8 }}>Rozpis nákladů</div>
+            {!hasElements
+              ? <div style={{ fontSize: 12, color: "#2e3a1f44", fontStyle: "italic" }}>Přetáhněte prvky na parcelu</div>
+              : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  {stats!.breakdown.map(item => (
+                    <div key={item.label} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontSize: 13, width: 20, textAlign: "center" }}>{item.icon}</span>
+                      <span style={{ fontSize: 11, color: "#2e3a1f", flex: 1 }}>{item.label}</span>
+                      <span style={{ fontSize: 10, color: "#2e3a1f88", minWidth: 16, textAlign: "right" }}>×{item.count}</span>
+                      <span style={{ fontSize: 11, color: "#2e3a1f66", minWidth: 140, textAlign: "right", fontStyle: "italic" }}>
+                        {formatCZK(item.min)} – {formatCZK(item.max)}
+                      </span>
+                    </div>
+                  ))}
+                  <div style={{ borderTop: "1px solid #2e3a1f18", marginTop: 4, paddingTop: 6, display: "flex", justifyContent: "flex-end" }}>
+                    <span style={{ fontSize: 12, color: "#2e3a1f", fontStyle: "italic", fontWeight: 500 }}>
+                      {formatCZK(stats!.totalMin)} – {formatCZK(stats!.totalMax)}
+                    </span>
+                  </div>
+                </div>
+              )}
+          </div>
+
+          {/* Microclimate */}
+          <div style={{ minWidth: 220, maxWidth: 320 }}>
+            <div style={{ fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "#2e3a1f66", marginBottom: 8 }}>Vliv na mikroklima</div>
+            {!hasElements
+              ? <div style={{ fontSize: 12, color: "#2e3a1f44", fontStyle: "italic" }}>Přidejte prvky pro odhad</div>
+              : (
+                <>
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 8 }}>
+                    <span style={{ fontSize: 22, color: tempColor, fontStyle: "italic" }}>{tempLabel}</span>
+                    <span style={{ fontSize: 11, color: "#2e3a1f66" }}>oproti nezasáhnuté parcele</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: "#2e3a1f77", lineHeight: 1.55 }}>
+                    Odhad vychází z kombinace stínění, evapotranspirace rostlin a odpařování vodních prvků. Vodní plochy a stínící konstrukce přispívají nejvíce.
+                  </div>
+                  {[
+                    { label: "Vodní prvky",    types: ["pond", "water_barrel", "water_tank"],                                                               color: "#5B7FA0" },
+                    { label: "Záhony a nádoby", types: ["bed_small","bed_medium","bed_large","bed_round","keyhole","pot_small","pot_large","planter_box","window_box","hanging"], color: "#4A7C59" },
+                    { label: "Konstrukce",      types: ["greenhouse","coldframe","arch","trellis","compost"],                                               color: "#8B7355" },
+                  ].map(group => {
+                    const allCatalogItems = ELEMENT_CATALOG.flatMap(c => c.items);
+                    const groupCost = stats!.breakdown
+                      .filter(b => group.types.some(t => b.label === allCatalogItems.find(i => i.type === t)?.label))
+                      .reduce((s, b) => s + b.max, 0);
+                    if (groupCost === 0) return null;
+                    return (
+                      <div key={group.label} style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 8 }}>
+                        <div style={{ width: 8, height: 8, borderRadius: 2, background: group.color, flexShrink: 0 }} />
+                        <span style={{ fontSize: 10, color: "#2e3a1f88", flex: 1 }}>{group.label}</span>
+                        <div style={{ width: 80, height: 3, borderRadius: 2, background: "#2e3a1f18", overflow: "hidden" }}>
+                          <div style={{ height: "100%", background: group.color, width: `${(groupCost / (stats!.totalMax || 1)) * 100}%` }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </>
+              )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
+
+// ─── ParcelEditor ─────────────────────────────────────────────────────────────
+//
+// Keyboard shortcuts:
+//   Scroll wheel            → zoom toward cursor
+//   Middle-click drag       → pan
+//   Space + left drag       → pan
+//   F                       → fit parcel to screen
+//   [ / ]                   → rotate viewport ±15°
+//   Shift+click             → add/remove from selection
+//   Delete / Backspace      → remove selected elements
+//   Escape                  → deselect all
+//
+// Props:
+//   area    — parcel geometry from the map picker
+//   onBack  — called when the user clicks "Back"
 
 export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onBack: () => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -433,6 +614,7 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [editorMapStyle, setEditorMapStyle] = useState<"map" | "satellite">("map");
   const [zoomDisplay, setZoomDisplay] = useState(100);
+  const [barExpanded, setBarExpanded] = useState(false);
   const [satTilesVersion, setSatTilesVersion] = useState(0);
   const [satImageStatus, setSatImageStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
 
@@ -448,12 +630,10 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
 
   const vp = useRef<Viewport>({ x: 0, y: 0, zoom: 1, angle: 0 });
   const vpInitialised = useRef(false);
-
   const panState = useRef<{ startX: number; startY: number; startVpX: number; startVpY: number } | null>(null);
   const dragState = useRef<{
     ids: string[];
-    startWorldX: number;
-    startWorldY: number;
+    startWorldX: number; startWorldY: number;
     startPositions: Record<string, { x: number; y: number }>;
   } | null>(null);
   const marqueeState = useRef<{ startX: number; startY: number; additive: boolean } | null>(null);
@@ -463,30 +643,21 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
   useEffect(() => { selectedIdsRef.current = selectedIds; }, [selectedIds]);
   useEffect(() => { hoveredIdRef.current = hoveredId; }, [hoveredId]);
 
+  // ── Satellite tile loading ──────────────────────────────────────────────────
+
   useEffect(() => {
-    if (editorMapStyle !== "satellite") {
-      setSatImageStatus("idle");
-      return;
-    }
+    if (editorMapStyle !== "satellite") { setSatImageStatus("idle"); return; }
     setSatImageStatus("loading");
     satelliteTilesRef.current = [];
-    setSatTilesVersion((v) => v + 1);
+    setSatTilesVersion(v => v + 1);
 
     const { north, south, east, west } = area.bounds;
-    const maxTiles = 36;
     let zoom = 18;
     for (let z = 18; z >= 12; z--) {
-      const xMin = lngToTileX(west, z);
-      const xMax = lngToTileX(east, z);
-      const yMin = latToTileY(north, z);
-      const yMax = latToTileY(south, z);
-      const count = (Math.abs(xMax - xMin) + 1) * (Math.abs(yMax - yMin) + 1);
-      if (count <= maxTiles) {
-        zoom = z;
-        break;
-      }
+      const count = (Math.abs(lngToTileX(east, z) - lngToTileX(west, z)) + 1)
+                  * (Math.abs(latToTileY(south, z) - latToTileY(north, z)) + 1);
+      if (count <= 36) { zoom = z; break; }
     }
-
     const x0 = Math.min(lngToTileX(west, zoom), lngToTileX(east, zoom));
     const x1 = Math.max(lngToTileX(west, zoom), lngToTileX(east, zoom));
     const y0 = Math.min(latToTileY(north, zoom), latToTileY(south, zoom));
@@ -494,47 +665,37 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
 
     let cancelled = false;
     const loads: Promise<SatelliteTile | null>[] = [];
-    for (let x = x0; x <= x1; x++) {
-      for (let y = y0; y <= y1; y++) {
-        loads.push(new Promise((resolve) => {
-          const img = new Image();
-          img.onload = () => resolve({ z: zoom, x, y, img });
-          img.onerror = () => resolve(null);
-          img.src = `https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${zoom}/${y}/${x}`;
-        }));
-      }
+    for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) {
+      loads.push(new Promise(resolve => {
+        const img = new Image();
+        img.onload = () => resolve({ z: zoom, x, y, img });
+        img.onerror = () => resolve(null);
+        img.src = `https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${zoom}/${y}/${x}`;
+      }));
     }
-
-    Promise.all(loads).then((tiles) => {
+    Promise.all(loads).then(tiles => {
       if (cancelled) return;
       const loaded = tiles.filter((t): t is SatelliteTile => t !== null);
       satelliteTilesRef.current = loaded;
       setSatImageStatus(loaded.length > 0 ? "ready" : "error");
-      setSatTilesVersion((v) => v + 1);
+      setSatTilesVersion(v => v + 1);
     });
-
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [editorMapStyle, area.bounds.north, area.bounds.south, area.bounds.east, area.bounds.west]);
+
+  // ── Viewport helpers ────────────────────────────────────────────────────────
 
   function screenToWorld(sx: number, sy: number): [number, number] {
     const { x, y, zoom, angle } = vp.current;
     const dx = sx - x, dy = sy - y;
     const cos = Math.cos(-angle), sin = Math.sin(-angle);
-    return [
-      (dx * cos - dy * sin) / zoom,
-      (dx * sin + dy * cos) / zoom,
-    ];
+    return [(dx * cos - dy * sin) / zoom, (dx * sin + dy * cos) / zoom];
   }
 
   function worldToScreen(wx: number, wy: number): [number, number] {
     const { x, y, zoom, angle } = vp.current;
     const cos = Math.cos(angle), sin = Math.sin(angle);
-    return [
-      wx * zoom * cos - wy * zoom * sin + x,
-      wx * zoom * sin + wy * zoom * cos + y,
-    ];
+    return [wx * zoom * cos - wy * zoom * sin + x, wx * zoom * sin + wy * zoom * cos + y];
   }
 
   function fitParcel() {
@@ -542,17 +703,11 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
     const { project, pixelsPerMetre } = makeProjection(area.points, w, h, 80);
     const pts = area.points.map(project);
     const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
-    const minX = Math.min(...xs), maxX = Math.max(...xs);
-    const minY = Math.min(...ys), maxY = Math.max(...ys);
-    const pw = maxX - minX, ph = maxY - minY;
+    const pw = Math.max(...xs) - Math.min(...xs), ph = Math.max(...ys) - Math.min(...ys);
     const zoom = Math.min((w - 120) / pw, (h - 120) / ph, 4);
-    const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
-    vp.current = {
-      x: w / 2 - cx * zoom,
-      y: h / 2 - cy * zoom,
-      zoom,
-      angle: 0,
-    };
+    const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+    const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+    vp.current = { x: w / 2 - cx * zoom, y: h / 2 - cy * zoom, zoom, angle: 0 };
     pixelsPerMetreRef.current = pixelsPerMetre;
     setZoomDisplay(Math.round(zoom * 100));
   }
@@ -564,6 +719,8 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
     }
   });
 
+  // ── Render loop ─────────────────────────────────────────────────────────────
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -573,26 +730,26 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
     function render() {
       const { w, h } = canvasSize.current;
       const { x: vpX, y: vpY, zoom, angle } = vp.current;
-      const isSatellite = editorMapStyle === "satellite";
-      const hasSatelliteTiles = isSatellite && satelliteTilesRef.current.length > 0;
-      const bgFill = isSatellite ? "#5d6757" : "#d6d7c3";
-      const bgGrid = isSatellite ? "#ffffff14" : "#c8c9b544";
-      const outsideFill = isSatellite ? "#3f463bcc" : "#d6d7c3cc";
-      const parcelFill = isSatellite ? "#6f7d68" : "#F4F5E0";
-      const parcelFineGrid = isSatellite ? "#ffffff10" : "#2e3a1f0d";
-      const parcelAccentGrid = isSatellite ? "#ffffff1f" : "#2e3a1f18";
-      const parcelBorder = isSatellite ? "#e8efda" : "#2e3a1f";
-      const labelColor = isSatellite ? "#f1f6e0bb" : "#2e3a1f55";
-      const scaleColor = isSatellite ? "#f1f6e0d0" : "#2e3a1f88";
+      const isSat = editorMapStyle === "satellite";
+      const hasTiles = isSat && satelliteTilesRef.current.length > 0;
+
+      const bgFill        = isSat ? "#5d6757" : "#d6d7c3";
+      const bgGrid        = isSat ? "#ffffff14" : "#c8c9b544";
+      const outsideFill   = isSat ? "#3f463bcc" : "#d6d7c3cc";
+      const parcelFill    = isSat ? "#6f7d68" : "#F4F5E0";
+      const fineGrid      = isSat ? "#ffffff10" : "#2e3a1f0d";
+      const accentGrid    = isSat ? "#ffffff1f" : "#2e3a1f18";
+      const parcelBorder  = isSat ? "#e8efda" : "#2e3a1f";
+      const labelColor    = isSat ? "#f1f6e0bb" : "#2e3a1f55";
+      const scaleColor    = isSat ? "#f1f6e0d0" : "#2e3a1f88";
 
       ctx.clearRect(0, 0, w, h);
-
       ctx.fillStyle = bgFill;
       ctx.fillRect(0, 0, w, h);
 
+      // Background grid (screen-space)
       const gridStep = 40;
-      ctx.strokeStyle = bgGrid;
-      ctx.lineWidth = 0.5;
+      ctx.strokeStyle = bgGrid; ctx.lineWidth = 0.5;
       const gox = ((vpX % gridStep) + gridStep) % gridStep;
       const goy = ((vpY % gridStep) + gridStep) % gridStep;
       for (let gx = gox - gridStep; gx < w + gridStep; gx += gridStep) {
@@ -602,6 +759,7 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
         ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(w, gy); ctx.stroke();
       }
 
+      // World-space drawing
       ctx.save();
       const cos = Math.cos(angle), sin = Math.sin(angle);
       ctx.setTransform(zoom * cos, zoom * sin, -zoom * sin, zoom * cos, vpX, vpY);
@@ -610,6 +768,7 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
       pixelsPerMetreRef.current = pixelsPerMetre;
       const worldPts = area.points.map(project);
 
+      // Outside-parcel dim
       const big = 999999;
       ctx.beginPath();
       ctx.rect(-big, -big, big * 2, big * 2);
@@ -619,6 +778,7 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
       ctx.fillStyle = outsideFill;
       ctx.fill("evenodd");
 
+      // Parcel fill
       ctx.beginPath();
       ctx.moveTo(worldPts[0][0], worldPts[0][1]);
       worldPts.forEach(([px, py]) => ctx.lineTo(px, py));
@@ -626,173 +786,120 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
       ctx.fillStyle = parcelFill;
       ctx.fill();
 
-      if (hasSatelliteTiles) {
+      // Satellite imagery (clipped to parcel)
+      if (hasTiles) {
         ctx.save();
         ctx.beginPath();
         ctx.moveTo(worldPts[0][0], worldPts[0][1]);
         worldPts.forEach(([px, py]) => ctx.lineTo(px, py));
-        ctx.closePath();
-        ctx.clip();
+        ctx.closePath(); ctx.clip();
         ctx.globalAlpha = 0.95;
-        satelliteTilesRef.current.forEach((tile) => {
-          const west = tileXToLng(tile.x, tile.z);
-          const east = tileXToLng(tile.x + 1, tile.z);
-          const north = tileYToLat(tile.y, tile.z);
-          const south = tileYToLat(tile.y + 1, tile.z);
-          const nw = project([north, west]);
-          const se = project([south, east]);
-          const x = Math.min(nw[0], se[0]);
-          const y = Math.min(nw[1], se[1]);
-          const w = Math.abs(se[0] - nw[0]);
-          const h = Math.abs(se[1] - nw[1]);
-          ctx.drawImage(tile.img, x, y, w, h);
+        satelliteTilesRef.current.forEach(tile => {
+          const nw = project([tileYToLat(tile.y, tile.z), tileXToLng(tile.x, tile.z)]);
+          const se = project([tileYToLat(tile.y + 1, tile.z), tileXToLng(tile.x + 1, tile.z)]);
+          ctx.drawImage(tile.img, Math.min(nw[0], se[0]), Math.min(nw[1], se[1]),
+            Math.abs(se[0] - nw[0]), Math.abs(se[1] - nw[1]));
         });
-        ctx.globalAlpha = 1;
-        ctx.restore();
+        ctx.globalAlpha = 1; ctx.restore();
       }
 
+      // Metre grid (clipped to parcel)
       ctx.save();
       ctx.beginPath();
       ctx.moveTo(worldPts[0][0], worldPts[0][1]);
       worldPts.forEach(([px, py]) => ctx.lineTo(px, py));
-      ctx.closePath();
-      ctx.clip();
-
-      const gridW = pixelsPerMetre; 
+      ctx.closePath(); ctx.clip();
+      const gw = pixelsPerMetre;
       const xs2 = worldPts.map(p => p[0]), ys2 = worldPts.map(p => p[1]);
-      const wx0 = Math.floor(Math.min(...xs2) / gridW) * gridW;
-      const wy0 = Math.floor(Math.min(...ys2) / gridW) * gridW;
-      const wx1 = Math.ceil(Math.max(...xs2) / gridW) * gridW;
-      const wy1 = Math.ceil(Math.max(...ys2) / gridW) * gridW;
-      ctx.strokeStyle = parcelFineGrid;
-      ctx.lineWidth = 0.5 / zoom;
-      for (let gx = wx0; gx <= wx1; gx += gridW) {
-        ctx.beginPath(); ctx.moveTo(gx, wy0); ctx.lineTo(gx, wy1); ctx.stroke();
-      }
-      for (let gy = wy0; gy <= wy1; gy += gridW) {
-        ctx.beginPath(); ctx.moveTo(wx0, gy); ctx.lineTo(wx1, gy); ctx.stroke();
-      }
-
-      ctx.strokeStyle = parcelAccentGrid;
-      ctx.lineWidth = 1 / zoom;
-      for (let gx = wx0; gx <= wx1; gx += gridW * 5) {
-        ctx.beginPath(); ctx.moveTo(gx, wy0); ctx.lineTo(gx, wy1); ctx.stroke();
-      }
-      for (let gy = wy0; gy <= wy1; gy += gridW * 5) {
-        ctx.beginPath(); ctx.moveTo(wx0, gy); ctx.lineTo(wx1, gy); ctx.stroke();
-      }
+      const wx0 = Math.floor(Math.min(...xs2) / gw) * gw;
+      const wy0 = Math.floor(Math.min(...ys2) / gw) * gw;
+      const wx1 = Math.ceil(Math.max(...xs2) / gw) * gw;
+      const wy1 = Math.ceil(Math.max(...ys2) / gw) * gw;
+      ctx.strokeStyle = fineGrid; ctx.lineWidth = 0.5 / zoom;
+      for (let gx = wx0; gx <= wx1; gx += gw) { ctx.beginPath(); ctx.moveTo(gx, wy0); ctx.lineTo(gx, wy1); ctx.stroke(); }
+      for (let gy = wy0; gy <= wy1; gy += gw) { ctx.beginPath(); ctx.moveTo(wx0, gy); ctx.lineTo(wx1, gy); ctx.stroke(); }
+      ctx.strokeStyle = accentGrid; ctx.lineWidth = 1 / zoom;
+      for (let gx = wx0; gx <= wx1; gx += gw * 5) { ctx.beginPath(); ctx.moveTo(gx, wy0); ctx.lineTo(gx, wy1); ctx.stroke(); }
+      for (let gy = wy0; gy <= wy1; gy += gw * 5) { ctx.beginPath(); ctx.moveTo(wx0, gy); ctx.lineTo(wx1, gy); ctx.stroke(); }
       ctx.restore();
+
+      // Parcel border
       ctx.beginPath();
       ctx.moveTo(worldPts[0][0], worldPts[0][1]);
       worldPts.forEach(([px, py]) => ctx.lineTo(px, py));
       ctx.closePath();
-      ctx.strokeStyle = parcelBorder;
-      ctx.lineWidth = 2 / zoom;
-      ctx.setLineDash([]);
-      ctx.stroke();
+      ctx.strokeStyle = parcelBorder; ctx.lineWidth = 2 / zoom; ctx.setLineDash([]); ctx.stroke();
 
-      if (isSatellite && !hasSatelliteTiles) {
-        const cx = worldPts.reduce((sum, p) => sum + p[0], 0) / worldPts.length;
-        const cy = worldPts.reduce((sum, p) => sum + p[1], 0) / worldPts.length;
+      // Loading indicator for satellite
+      if (isSat && !hasTiles) {
+        const cx = worldPts.reduce((s, p) => s + p[0], 0) / worldPts.length;
+        const cy = worldPts.reduce((s, p) => s + p[1], 0) / worldPts.length;
         ctx.save();
         ctx.fillStyle = "#f1f6e0dd";
         ctx.font = `${12 / zoom}px sans-serif`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText(
-          satImageStatus === "error"
-            ? "Satelitní snímky nejsou pro tento pohled dostupné"
-            : "Načítám satelitní snímky…",
-          cx,
-          cy
-        );
+        ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.fillText(satImageStatus === "error" ? "Satelitní snímky nejsou dostupné" : "Načítám satelitní snímky…", cx, cy);
         ctx.restore();
       }
 
+      // Parcel area label
       ctx.save();
-      const lx = worldPts[0][0] + 8 / zoom;
-      const ly = worldPts[0][1] + 8 / zoom;
       ctx.font = `${11 / zoom}px sans-serif`;
-      ctx.fillStyle = labelColor;
-      ctx.textAlign = "left";
-      ctx.textBaseline = "top";
+      ctx.fillStyle = labelColor; ctx.textAlign = "left"; ctx.textBaseline = "top";
       ctx.fillText(
-        area.areaSqKm < 1
-          ? `${(area.areaSqKm * 100).toFixed(1)} ha`
-          : `${area.areaSqKm.toFixed(1)} km²`,
-        lx, ly
+        area.areaSqKm < 1 ? `${(area.areaSqKm * 100).toFixed(1)} ha` : `${area.areaSqKm.toFixed(1)} km²`,
+        worldPts[0][0] + 8 / zoom, worldPts[0][1] + 8 / zoom
       );
       ctx.restore();
 
+      // Scale bar
       {
-        const barMetres = (() => {
-          const candidates = [0.5,1,2,5,10,20,50,100,200,500,1000];
-          const targetPx = 80 / zoom;
-          return candidates.find(m => m * pixelsPerMetre >= targetPx) ?? 1000;
-        })();
+        const barMetres = [0.5,1,2,5,10,20,50,100,200,500,1000].find(m => m * pixelsPerMetre >= 80 / zoom) ?? 1000;
         const barPx = barMetres * pixelsPerMetre;
         const bx = Math.min(...xs2) + 10 / zoom;
         const by = Math.max(...ys2) - 20 / zoom;
-        ctx.strokeStyle = scaleColor;
-        ctx.lineWidth = 2 / zoom;
+        ctx.strokeStyle = scaleColor; ctx.lineWidth = 2 / zoom;
         ctx.beginPath();
         ctx.moveTo(bx, by); ctx.lineTo(bx + barPx, by);
         ctx.moveTo(bx, by - 4 / zoom); ctx.lineTo(bx, by + 4 / zoom);
         ctx.moveTo(bx + barPx, by - 4 / zoom); ctx.lineTo(bx + barPx, by + 4 / zoom);
         ctx.stroke();
         ctx.font = `${10 / zoom}px sans-serif`;
-        ctx.fillStyle = scaleColor;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "bottom";
-        ctx.fillText(barMetres >= 1000 ? `${barMetres/1000}km` : `${barMetres}m`, bx + barPx / 2, by - 5 / zoom);
+        ctx.fillStyle = scaleColor; ctx.textAlign = "center"; ctx.textBaseline = "bottom";
+        ctx.fillText(barMetres >= 1000 ? `${barMetres / 1000}km` : `${barMetres}m`, bx + barPx / 2, by - 5 / zoom);
       }
 
+      // Elements
       elementsRef.current.forEach(el => {
-        const catalogItem = ELEMENT_CATALOG.flatMap(c => c.items).find(i => i.type === el.type);
-        if (!catalogItem) return;
-        drawShape(ctx, { ...catalogItem, rotation: el.rotation || 0 },
-          el.x, el.y, el.wPx, el.hPx,
-          selectedIdsRef.current.includes(el.id),
-          el.id === hoveredIdRef.current);
+        const cat = ELEMENT_CATALOG.flatMap(c => c.items).find(i => i.type === el.type);
+        if (!cat) return;
+        drawShape(ctx, { ...cat, rotation: el.rotation || 0 }, el.x, el.y, el.wPx, el.hPx,
+          selectedIdsRef.current.includes(el.id), el.id === hoveredIdRef.current);
       });
 
-      ctx.restore();
+      ctx.restore(); // end world transform
 
+      // Rotate handle (screen-space, drawn on top)
       rotateHandleRef.current = null;
       if (selectedIdsRef.current.length === 1) {
-        const selectedId = selectedIdsRef.current[0];
-        const selectedEl = elementsRef.current.find((el) => el.id === selectedId);
-        if (selectedEl) {
-          const cx = selectedEl.x + selectedEl.wPx / 2;
-          const cy = selectedEl.y + selectedEl.hPx / 2;
-          const theta = ((selectedEl.rotation || 0) * Math.PI) / 180;
-          const orbitDist = selectedEl.hPx / 2 + 28;
-          const hxWorld = cx + Math.sin(theta) * orbitDist;
-          const hyWorld = cy - Math.cos(theta) * orbitDist;
-          const [hx, hy] = worldToScreen(hxWorld, hyWorld);
+        const selId = selectedIdsRef.current[0];
+        const selEl = elementsRef.current.find(el => el.id === selId);
+        if (selEl) {
+          const cx = selEl.x + selEl.wPx / 2, cy = selEl.y + selEl.hPx / 2;
+          const theta = ((selEl.rotation || 0) * Math.PI) / 180;
+          const orbitDist = selEl.hPx / 2 + 28;
+          const [hx, hy] = worldToScreen(cx + Math.sin(theta) * orbitDist, cy - Math.cos(theta) * orbitDist);
           const hr = 12;
-
-          rotateHandleRef.current = { id: selectedId, x: hx, y: hy, radius: hr };
-
+          rotateHandleRef.current = { id: selId, x: hx, y: hy, radius: hr };
+          const [cxs, cys] = worldToScreen(cx, cy);
           ctx.save();
-          const [cxScreen, cyScreen] = worldToScreen(cx, cy);
-          ctx.strokeStyle = "#2e3a1f66";
-          ctx.lineWidth = 1.2;
-          ctx.beginPath();
-          ctx.moveTo(cxScreen, cyScreen);
-          ctx.lineTo(hx, hy);
-          ctx.stroke();
-          ctx.beginPath();
-          ctx.arc(hx, hy, hr, 0, Math.PI * 2);
-          ctx.fillStyle = "#F4F5E0";
-          ctx.fill();
-          ctx.strokeStyle = "#2e3a1f";
-          ctx.lineWidth = 1.5;
-          ctx.stroke();
-          ctx.fillStyle = "#2e3a1f";
-          ctx.font = "12px sans-serif";
-          ctx.textAlign = "center";
-          ctx.textBaseline = "middle";
+          ctx.strokeStyle = "#2e3a1f66"; ctx.lineWidth = 1.2;
+          ctx.beginPath(); ctx.moveTo(cxs, cys); ctx.lineTo(hx, hy); ctx.stroke();
+          ctx.beginPath(); ctx.arc(hx, hy, hr, 0, Math.PI * 2);
+          ctx.fillStyle = "#F4F5E0"; ctx.fill();
+          ctx.strokeStyle = "#2e3a1f"; ctx.lineWidth = 1.5; ctx.stroke();
+          ctx.fillStyle = "#2e3a1f"; ctx.font = "12px sans-serif";
+          ctx.textAlign = "center"; ctx.textBaseline = "middle";
           ctx.fillText("↻", hx, hy + 0.5);
           ctx.restore();
         }
@@ -805,66 +912,53 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
     return () => cancelAnimationFrame(raf);
   }, [area, editorMapStyle, satTilesVersion, satImageStatus]);
 
+  // ── Resize observer ─────────────────────────────────────────────────────────
+
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas || !canvas.parentElement) return;
     const obs = new ResizeObserver(entries => {
       for (const entry of entries) {
-        const prevSize = canvasSize.current;
+        const prev = canvasSize.current;
         const { width, height } = entry.contentRect;
 
-        if (prevSize.w > 0 && prevSize.h > 0 && (width !== prevSize.w || height !== prevSize.h)) {
-          const oldProjection = makeProjection(area.points, prevSize.w, prevSize.h, 80);
-          const newProjection = makeProjection(area.points, width, height, 80);
-
-          setElements((prev) => prev.map((el) => ({
-            ...el,
-            ...(() => {
-              const topLeftGeo = oldProjection.unproject([el.x, el.y]);
-              const bottomRightGeo = oldProjection.unproject([el.x + el.wPx, el.y + el.hPx]);
-              const nextTopLeft = newProjection.project(topLeftGeo);
-              const nextBottomRight = newProjection.project(bottomRightGeo);
-              const nextX = Math.min(nextTopLeft[0], nextBottomRight[0]);
-              const nextY = Math.min(nextTopLeft[1], nextBottomRight[1]);
-              return {
-                x: nextX,
-                y: nextY,
-                wPx: Math.max(4, Math.abs(nextBottomRight[0] - nextTopLeft[0])),
-                hPx: Math.max(4, Math.abs(nextBottomRight[1] - nextTopLeft[1])),
-              };
-            })(),
-          })));
+        if (prev.w > 0 && prev.h > 0 && (width !== prev.w || height !== prev.h)) {
+          const oldP = makeProjection(area.points, prev.w, prev.h, 80);
+          const newP = makeProjection(area.points, width, height, 80);
+          setElements(els => els.map(el => {
+            const tl = oldP.unproject([el.x, el.y]);
+            const br = oldP.unproject([el.x + el.wPx, el.y + el.hPx]);
+            const ntl = newP.project(tl), nbr = newP.project(br);
+            return {
+              ...el,
+              x: Math.min(ntl[0], nbr[0]), y: Math.min(ntl[1], nbr[1]),
+              wPx: Math.max(4, Math.abs(nbr[0] - ntl[0])),
+              hPx: Math.max(4, Math.abs(nbr[1] - ntl[1])),
+            };
+          }));
         }
 
-        // Keep the current world center stable when browser/page zoom changes layout size.
-        if (vpInitialised.current && prevSize.w > 0 && prevSize.h > 0) {
-          const prevCenterX = prevSize.w / 2;
-          const prevCenterY = prevSize.h / 2;
-          const [centerWx, centerWy] = screenToWorld(prevCenterX, prevCenterY);
+        if (vpInitialised.current && prev.w > 0 && prev.h > 0) {
+          const [cwx, cwy] = screenToWorld(prev.w / 2, prev.h / 2);
           const { zoom, angle } = vp.current;
-          const cos = Math.cos(angle);
-          const sin = Math.sin(angle);
-          const nextCenterX = width / 2;
-          const nextCenterY = height / 2;
+          const c = Math.cos(angle), s = Math.sin(angle);
           vp.current = {
             ...vp.current,
-            x: nextCenterX - (centerWx * zoom * cos - centerWy * zoom * sin),
-            y: nextCenterY - (centerWx * zoom * sin + centerWy * zoom * cos),
+            x: width / 2 - (cwx * zoom * c - cwy * zoom * s),
+            y: height / 2 - (cwx * zoom * s + cwy * zoom * c),
           };
         }
 
-        canvas.width = width;
-        canvas.height = height;
+        canvas.width = width; canvas.height = height;
         canvasSize.current = { w: width, h: height };
-        if (!vpInitialised.current) {
-          fitParcel();
-          vpInitialised.current = true;
-        }
+        if (!vpInitialised.current) { fitParcel(); vpInitialised.current = true; }
       }
     });
     obs.observe(canvas.parentElement);
     return () => obs.disconnect();
   }, []);
+
+  // ── Wheel zoom ──────────────────────────────────────────────────────────────
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -872,25 +966,19 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
     function onWheel(e: WheelEvent) {
       e.preventDefault();
       const rect = canvas!.getBoundingClientRect();
-      const sx = e.clientX - rect.left;
-      const sy = e.clientY - rect.top;
+      const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
       const [wx, wy] = screenToWorld(sx, sy);
       const { angle } = vp.current;
-      const factor = e.deltaY < 0 ? 1.12 : 1 / 1.12;
-      const newZoom = Math.max(0.05, Math.min(100, vp.current.zoom * factor));
-      const cos = Math.cos(angle);
-      const sin = Math.sin(angle);
-      vp.current = {
-        ...vp.current,
-        zoom: newZoom,
-        x: sx - (wx * newZoom * cos - wy * newZoom * sin),
-        y: sy - (wx * newZoom * sin + wy * newZoom * cos),
-      };
+      const newZoom = Math.max(0.05, Math.min(100, vp.current.zoom * (e.deltaY < 0 ? 1.12 : 1 / 1.12)));
+      const c = Math.cos(angle), s = Math.sin(angle);
+      vp.current = { ...vp.current, zoom: newZoom, x: sx - (wx * newZoom * c - wy * newZoom * s), y: sy - (wx * newZoom * s + wy * newZoom * c) };
       setZoomDisplay(Math.round(newZoom * 100));
     }
     canvas.addEventListener("wheel", onWheel, { passive: false });
     return () => canvas.removeEventListener("wheel", onWheel);
   }, []);
+
+  // ── Keyboard ────────────────────────────────────────────────────────────────
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
@@ -902,8 +990,8 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
         (document.activeElement as HTMLElement)?.tagName !== "TEXTAREA" &&
         (document.activeElement as HTMLElement)?.tagName !== "INPUT") {
         if (selectedIdsRef.current.length > 0) {
-          const selectedSet = new Set(selectedIdsRef.current);
-          setElements(prev => prev.filter(el => !selectedSet.has(el.id)));
+          const s = new Set(selectedIdsRef.current);
+          setElements(prev => prev.filter(el => !s.has(el.id)));
           setSelectedIds([]);
         }
       }
@@ -927,150 +1015,105 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
     const { w, h } = canvasSize.current;
     const cx = w / 2, cy = h / 2;
     const { x, y, zoom, angle } = vp.current;
-    const newAngle = angle + delta;
-    const cos = Math.cos(delta), sin = Math.sin(delta);
+    const c = Math.cos(delta), s = Math.sin(delta);
     const dx = x - cx, dy = y - cy;
-    vp.current = {
-      zoom,
-      angle: newAngle,
-      x: cx + dx * cos - dy * sin,
-      y: cy + dx * sin + dy * cos,
-    };
+    vp.current = { zoom, angle: angle + delta, x: cx + dx * c - dy * s, y: cy + dx * s + dy * c };
   }
 
-  function normalizeDeg(deg: number): number {
-    return ((deg % 360) + 360) % 360;
-  }
-
-  function pointerAngleDegFromCenter(cx: number, cy: number, sx: number, sy: number): number {
+  function normalizeDeg(d: number) { return ((d % 360) + 360) % 360; }
+  function pointerAngleDeg(cx: number, cy: number, sx: number, sy: number) {
     return normalizeDeg((Math.atan2(sx - cx, -(sy - cy)) * 180) / Math.PI);
   }
 
   function startRotateDrag(id: string, sx: number, sy: number) {
-    const el = elementsRef.current.find((item) => item.id === id);
+    const el = elementsRef.current.find(i => i.id === id);
     if (!el) return;
     const [cx, cy] = worldToScreen(el.x + el.wPx / 2, el.y + el.hPx / 2);
-    const pointerDeg = pointerAngleDegFromCenter(cx, cy, sx, sy);
-    const currentDeg = normalizeDeg(el.rotation || 0);
-    rotateDragRef.current = { id, angleOffsetDeg: pointerDeg - currentDeg };
+    rotateDragRef.current = { id, angleOffsetDeg: pointerAngleDeg(cx, cy, sx, sy) - normalizeDeg(el.rotation || 0) };
     if (!spaceDown.current && canvasRef.current) canvasRef.current.style.cursor = "grabbing";
   }
+  function stopRotateDrag() { rotateDragRef.current = null; }
 
-  function stopRotateDrag() {
-    rotateDragRef.current = null;
+  // ── Hit testing ─────────────────────────────────────────────────────────────
+
+  function hitTestScreen(sx: number, sy: number): PlacedElement | null {
+    for (const el of [...elementsRef.current].reverse()) {
+      const corners: [number, number][] = [
+        worldToScreen(el.x, el.y), worldToScreen(el.x + el.wPx, el.y),
+        worldToScreen(el.x + el.wPx, el.y + el.hPx), worldToScreen(el.x, el.y + el.hPx),
+      ];
+      const xs = corners.map(c => c[0]), ys = corners.map(c => c[1]);
+      if (sx >= Math.min(...xs) - HIT_PADDING_PX && sx <= Math.max(...xs) + HIT_PADDING_PX &&
+          sy >= Math.min(...ys) - HIT_PADDING_PX && sy <= Math.max(...ys) + HIT_PADDING_PX)
+        return el;
+    }
+    return null;
   }
 
   function hitTest(wx: number, wy: number): PlacedElement | null {
-    const elems = [...elementsRef.current].reverse();
-    for (const el of elems) {
+    for (const el of [...elementsRef.current].reverse()) {
       if (wx >= el.x && wx <= el.x + el.wPx && wy >= el.y && wy <= el.y + el.hPx) return el;
     }
     return null;
   }
 
-  function hitTestScreen(sx: number, sy: number): PlacedElement | null {
-    const elems = [...elementsRef.current].reverse();
-    for (const el of elems) {
-      const corners: [number, number][] = [
-        worldToScreen(el.x, el.y),
-        worldToScreen(el.x + el.wPx, el.y),
-        worldToScreen(el.x + el.wPx, el.y + el.hPx),
-        worldToScreen(el.x, el.y + el.hPx),
-      ];
-      const xs = corners.map((c) => c[0]);
-      const ys = corners.map((c) => c[1]);
-      const left = Math.min(...xs) - HIT_PADDING_PX;
-      const right = Math.max(...xs) + HIT_PADDING_PX;
-      const top = Math.min(...ys) - HIT_PADDING_PX;
-      const bottom = Math.max(...ys) + HIT_PADDING_PX;
-      if (sx >= left && sx <= right && sy >= top && sy <= bottom) return el;
-    }
-    return null;
-  }
-
   function getCanvasXY(e: React.MouseEvent | MouseEvent): [number, number] {
-    const rect = canvasRef.current!.getBoundingClientRect();
-    return [e.clientX - rect.left, e.clientY - rect.top];
+    const r = canvasRef.current!.getBoundingClientRect();
+    return [e.clientX - r.left, e.clientY - r.top];
   }
 
   function canPlaceElementAt(x: number, y: number, wPx: number, hPx: number): boolean {
     const { w, h } = canvasSize.current;
     if (!w || !h) return false;
     const { project } = makeProjection(area.points, w, h, 80);
-    const parcelWorldPoints = area.points.map(project);
-    return rectWithinPolygon(x, y, wPx, hPx, parcelWorldPoints);
+    return rectWithinPolygon(x, y, wPx, hPx, area.points.map(project));
   }
 
   function getElementsInScreenRect(x0: number, y0: number, x1: number, y1: number): string[] {
-    const left = Math.min(x0, x1);
-    const right = Math.max(x0, x1);
-    const top = Math.min(y0, y1);
-    const bottom = Math.max(y0, y1);
-
-    return elementsRef.current
-      .filter((el) => {
-        const corners: [number, number][] = [
-          worldToScreen(el.x, el.y),
-          worldToScreen(el.x + el.wPx, el.y),
-          worldToScreen(el.x + el.wPx, el.y + el.hPx),
-          worldToScreen(el.x, el.y + el.hPx),
-        ];
-        const xs = corners.map((c) => c[0]);
-        const ys = corners.map((c) => c[1]);
-        const elLeft = Math.min(...xs);
-        const elRight = Math.max(...xs);
-        const elTop = Math.min(...ys);
-        const elBottom = Math.max(...ys);
-        return !(elRight < left || elLeft > right || elBottom < top || elTop > bottom);
-      })
-      .map((el) => el.id);
+    const [left, right, top, bottom] = [Math.min(x0,x1), Math.max(x0,x1), Math.min(y0,y1), Math.max(y0,y1)];
+    return elementsRef.current.filter(el => {
+      const corners: [number, number][] = [
+        worldToScreen(el.x, el.y), worldToScreen(el.x + el.wPx, el.y),
+        worldToScreen(el.x + el.wPx, el.y + el.hPx), worldToScreen(el.x, el.y + el.hPx),
+      ];
+      const xs = corners.map(c => c[0]), ys = corners.map(c => c[1]);
+      return !(Math.max(...xs) < left || Math.min(...xs) > right || Math.max(...ys) < top || Math.min(...ys) > bottom);
+    }).map(el => el.id);
   }
+
+  // ── Mouse handlers ──────────────────────────────────────────────────────────
 
   function onMouseDown(e: React.MouseEvent) {
     const [sx, sy] = getCanvasXY(e);
-
     if (e.button === 1 || (e.button === 0 && spaceDown.current)) {
       e.preventDefault();
       panState.current = { startX: sx, startY: sy, startVpX: vp.current.x, startVpY: vp.current.y };
       canvasRef.current!.style.cursor = "grabbing";
       return;
     }
-
     if (e.button !== 0) return;
 
     const handle = rotateHandleRef.current;
     if (handle) {
-      const dx = sx - handle.x;
-      const dy = sy - handle.y;
-      if (Math.sqrt(dx * dx + dy * dy) <= handle.radius + 2) {
-        startRotateDrag(handle.id, sx, sy);
-        return;
-      }
+      const dx = sx - handle.x, dy = sy - handle.y;
+      if (Math.sqrt(dx * dx + dy * dy) <= handle.radius + 2) { startRotateDrag(handle.id, sx, sy); return; }
     }
 
-    const [wx, wy] = screenToWorld(sx, sy);
     const hit = hitTestScreen(sx, sy);
     if (hit) {
       if (e.shiftKey) {
-        setSelectedIds((prev) => (
-          prev.includes(hit.id) ? prev.filter((id) => id !== hit.id) : [...prev, hit.id]
-        ));
+        setSelectedIds(prev => prev.includes(hit.id) ? prev.filter(id => id !== hit.id) : [...prev, hit.id]);
         return;
       }
-
       const dragIds = selectedIdsRef.current.includes(hit.id) ? selectedIdsRef.current : [hit.id];
       if (!selectedIdsRef.current.includes(hit.id)) setSelectedIds([hit.id]);
-
+      const [wx, wy] = screenToWorld(sx, sy);
       const startPositions: Record<string, { x: number; y: number }> = {};
-      elementsRef.current.forEach((el) => {
-        if (dragIds.includes(el.id)) startPositions[el.id] = { x: el.x, y: el.y };
-      });
-      const anchorX = Math.max(hit.x, Math.min(wx, hit.x + hit.wPx));
-      const anchorY = Math.max(hit.y, Math.min(wy, hit.y + hit.hPx));
+      elementsRef.current.forEach(el => { if (dragIds.includes(el.id)) startPositions[el.id] = { x: el.x, y: el.y }; });
       dragState.current = {
         ids: dragIds,
-        startWorldX: anchorX,
-        startWorldY: anchorY,
+        startWorldX: Math.max(hit.x, Math.min(wx, hit.x + hit.wPx)),
+        startWorldY: Math.max(hit.y, Math.min(wy, hit.y + hit.hPx)),
         startPositions,
       };
     } else {
@@ -1091,17 +1134,10 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
 
     if (rotateDragRef.current) {
       const { id, angleOffsetDeg } = rotateDragRef.current;
-      const el = elementsRef.current.find((item) => item.id === id);
-      if (!el) {
-        stopRotateDrag();
-        return;
-      }
+      const el = elementsRef.current.find(i => i.id === id);
+      if (!el) { stopRotateDrag(); return; }
       const [cx, cy] = worldToScreen(el.x + el.wPx / 2, el.y + el.hPx / 2);
-      const pointerDeg = pointerAngleDegFromCenter(cx, cy, sx, sy);
-      const nextDeg = normalizeDeg(pointerDeg - angleOffsetDeg);
-      setElements((prev) => prev.map((item) => (
-        item.id === id ? { ...item, rotation: nextDeg } : item
-      )));
+      setElements(prev => prev.map(i => i.id === id ? { ...i, rotation: normalizeDeg(pointerAngleDeg(cx, cy, sx, sy) - angleOffsetDeg) } : i));
       if (!spaceDown.current) canvasRef.current!.style.cursor = "grabbing";
       return;
     }
@@ -1109,36 +1145,28 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
     if (dragState.current) {
       const { ids, startWorldX, startWorldY, startPositions } = dragState.current;
       const [wx, wy] = screenToWorld(sx, sy);
-      const dx = wx - startWorldX;
-      const dy = wy - startWorldY;
+      const dx = wx - startWorldX, dy = wy - startWorldY;
       const nextById: Record<string, { x: number; y: number }> = {};
-
       for (const id of ids) {
-        const draggingElement = elementsRef.current.find((el) => el.id === id);
-        const startPos = startPositions[id];
-        if (!draggingElement || !startPos) continue;
-        const nextX = snapTo(startPos.x + dx);
-        const nextY = snapTo(startPos.y + dy);
-        if (!canPlaceElementAt(nextX, nextY, draggingElement.wPx, draggingElement.hPx)) return;
-        nextById[id] = { x: nextX, y: nextY };
+        const el = elementsRef.current.find(e => e.id === id);
+        const sp = startPositions[id];
+        if (!el || !sp) continue;
+        const nx = snapTo(sp.x + dx), ny = snapTo(sp.y + dy);
+        if (!canPlaceElementAt(nx, ny, el.wPx, el.hPx)) return;
+        nextById[id] = { x: nx, y: ny };
       }
-
-      setElements((prev) => prev.map((el) => {
-        const next = nextById[el.id];
-        return next ? { ...el, x: next.x, y: next.y } : el;
-      }));
+      setElements(prev => prev.map(el => { const n = nextById[el.id]; return n ? { ...el, ...n } : el; }));
       return;
     }
 
     if (marqueeState.current) {
-      setSelectionBox((prev) => (prev ? { ...prev, x: sx, y: sy } : null));
+      setSelectionBox(prev => prev ? { ...prev, x: sx, y: sy } : null);
       return;
     }
 
     const handle = rotateHandleRef.current;
     if (handle) {
-      const dx = sx - handle.x;
-      const dy = sy - handle.y;
+      const dx = sx - handle.x, dy = sy - handle.y;
       if (Math.sqrt(dx * dx + dy * dy) <= handle.radius + 2) {
         setHoveredId(null);
         if (!spaceDown.current) canvasRef.current!.style.cursor = "pointer";
@@ -1146,40 +1174,27 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
       }
     }
 
-    const [wx, wy] = screenToWorld(sx, sy);
-    const hit = hitTestScreen(sx, sy) ?? hitTest(wx, wy);
+    const [wx2, wy2] = screenToWorld(sx, sy);
+    const hit = hitTestScreen(sx, sy) ?? hitTest(wx2, wy2);
     setHoveredId(hit ? hit.id : null);
-    if (!spaceDown.current) {
-      canvasRef.current!.style.cursor = hit ? "move" : "default";
-    }
+    if (!spaceDown.current) canvasRef.current!.style.cursor = hit ? "move" : "default";
   }
 
   function onMouseUp(e: React.MouseEvent) {
     stopRotateDrag();
     const [sx, sy] = getCanvasXY(e);
-    if (panState.current) {
-      panState.current = null;
-      canvasRef.current!.style.cursor = spaceDown.current ? "grab" : "default";
-    }
+    if (panState.current) { panState.current = null; canvasRef.current!.style.cursor = spaceDown.current ? "grab" : "default"; }
     dragState.current = null;
 
     if (marqueeState.current) {
       const { startX, startY, additive } = marqueeState.current;
-      const width = Math.abs(sx - startX);
-      const height = Math.abs(sy - startY);
-
-      if (width >= 4 || height >= 4) {
-        const idsInBox = getElementsInScreenRect(startX, startY, sx, sy);
-        if (additive) {
-          setSelectedIds((prev) => Array.from(new Set([...prev, ...idsInBox])));
-        } else {
-          setSelectedIds(idsInBox);
-        }
+      if (Math.abs(sx - startX) >= 4 || Math.abs(sy - startY) >= 4) {
+        const ids = getElementsInScreenRect(startX, startY, sx, sy);
+        setSelectedIds(prev => additive ? Array.from(new Set([...prev, ...ids])) : ids);
       } else if (!additive) {
         setSelectedIds([]);
       }
     }
-
     marqueeState.current = null;
     setSelectionBox(null);
   }
@@ -1187,18 +1202,14 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
   useEffect(() => {
     function onWindowMouseUp() {
       stopRotateDrag();
-      if (panState.current) {
-        panState.current = null;
-        if (canvasRef.current) {
-          canvasRef.current.style.cursor = spaceDown.current ? "grab" : "default";
-        }
-      }
+      if (panState.current) { panState.current = null; if (canvasRef.current) canvasRef.current.style.cursor = spaceDown.current ? "grab" : "default"; }
       dragState.current = null;
     }
-
     window.addEventListener("mouseup", onWindowMouseUp);
     return () => window.removeEventListener("mouseup", onWindowMouseUp);
   }, []);
+
+  // ── Catalog drag ────────────────────────────────────────────────────────────
 
   function onCatalogDragStart(e: React.DragEvent, item: any) {
     draggingCatalogItem.current = item;
@@ -1206,66 +1217,47 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
   }
 
   function onCanvasDragOver(e: React.DragEvent) {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "copy";
-    setIsDragOver(true);
+    e.preventDefault(); e.dataTransfer.dropEffect = "copy"; setIsDragOver(true);
   }
 
   function onCanvasDrop(e: React.DragEvent) {
-    e.preventDefault();
-    setIsDragOver(false);
+    e.preventDefault(); setIsDragOver(false);
     const item = draggingCatalogItem.current;
     if (!item) return;
-
     const rect = canvasRef.current!.getBoundingClientRect();
-    const sx = e.clientX - rect.left;
-    const sy = e.clientY - rect.top;
-    const [wx, wy] = screenToWorld(sx, sy);
-
+    const [wx, wy] = screenToWorld(e.clientX - rect.left, e.clientY - rect.top);
     const ppm = pixelsPerMetreRef.current;
-    const baseW = Math.max(0.0001, item.w * ppm);
-    const baseH = Math.max(0.0001, item.h * ppm);
-    const minVisiblePx = 6;
-    const preserveRatioScale = Math.max(minVisiblePx / baseW, minVisiblePx / baseH, 1);
-    const wPx = baseW * preserveRatioScale;
-    const hPx = baseH * preserveRatioScale;
-
-    const newEl: PlacedElement = {
-      id: genId(), type: item.type,
-      x: snapTo(wx - wPx / 2),
-      y: snapTo(wy - hPx / 2),
-      wPx, hPx, rotation: 0,
-    };
-    if (!canPlaceElementAt(newEl.x, newEl.y, newEl.wPx, newEl.hPx)) {
-      draggingCatalogItem.current = null;
-      return;
-    }
+    const baseW = Math.max(0.0001, item.w * ppm), baseH = Math.max(0.0001, item.h * ppm);
+    const scale = Math.max(6 / baseW, 6 / baseH, 1);
+    const wPx = baseW * scale, hPx = baseH * scale;
+    const newEl: PlacedElement = { id: genId(), type: item.type, x: snapTo(wx - wPx / 2), y: snapTo(wy - hPx / 2), wPx, hPx, rotation: 0 };
+    if (!canPlaceElementAt(newEl.x, newEl.y, newEl.wPx, newEl.hPx)) { draggingCatalogItem.current = null; return; }
     setElements(prev => [...prev, newEl]);
     setSelectedIds([newEl.id]);
     draggingCatalogItem.current = null;
   }
 
-  const selectedElement = selectedIds.length === 1
-    ? (elements.find(el => el.id === selectedIds[0]) ?? null)
-    : null;
+  // ── Derived values ──────────────────────────────────────────────────────────
+
+  const selectedElement = selectedIds.length === 1 ? (elements.find(el => el.id === selectedIds[0]) ?? null) : null;
   const categories = ELEMENT_CATALOG.map(c => c.category);
   const filteredCatalog = ELEMENT_CATALOG
-    .map(cat => ({
-      ...cat,
-      items: cat.items.filter(item =>
-        (!activeCategory || cat.category === activeCategory) &&
-        (item.label.toLowerCase().includes(sidebarSearch.toLowerCase()) ||
-          cat.category.toLowerCase().includes(sidebarSearch.toLowerCase()))
-      ),
-    }))
+    .map(cat => ({ ...cat, items: cat.items.filter(item => (!activeCategory || cat.category === activeCategory) && (item.label.toLowerCase().includes(sidebarSearch.toLowerCase()) || cat.category.toLowerCase().includes(sidebarSearch.toLowerCase()))) }))
     .filter(cat => cat.items.length > 0);
+
+  const parcelAreaSqM = area.areaSqKm * 1_000_000;
+  const planStats: PlanStats | null = elements.length === 0 ? null
+    : computePlanStats(elements, parcelAreaSqM, pixelsPerMetreRef.current);
+
+  // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 4000, display: "flex", flexDirection: "column", background: "#F4F5E0" }}>
 
-      {/* ── Header ── */}
+      {/* Header */}
       <header style={{ height: 52, flexShrink: 0, borderBottom: "1.5px solid #2e3a1f22", display: "flex", alignItems: "center", background: "#F4F5E0" }}>
-        <button onClick={onBack} style={{ height: "100%", padding: "0 20px", borderRight: "1.5px solid #2e3a1f22", background: "none", border: "none", cursor: "pointer", color: "#2e3a1f", fontSize: 13, fontFamily: "inherit", letterSpacing: "0.04em", display: "flex", alignItems: "center", gap: 8 }}>
+        <button onClick={onBack}
+          style={{ height: "100%", padding: "0 20px", borderRight: "1.5px solid #2e3a1f22", background: "none", border: "none", cursor: "pointer", color: "#2e3a1f", fontSize: 13, fontFamily: "inherit", letterSpacing: "0.04em", display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ fontSize: 16 }}>←</span> Zpět
         </button>
         <div style={{ padding: "0 20px", flex: 1, display: "flex", alignItems: "center", gap: 16 }}>
@@ -1281,61 +1273,30 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
         </div>
 
         {/* Viewport controls */}
-        <div style={{ display: "flex", alignItems: "center", height: "100%", gap: 0, borderLeft: "1.5px solid #2e3a1f22", borderRight: "1.5px solid #2e3a1f22" }}>
-          {/* Rotate CCW */}
+        <div style={{ display: "flex", alignItems: "center", height: "100%", borderLeft: "1.5px solid #2e3a1f22", borderRight: "1.5px solid #2e3a1f22" }}>
           <button title="Otočit pohled o −15° ( [ )" onClick={() => rotateViewport(-15 * Math.PI / 180)}
-            style={{ height: "100%", padding: "0 12px", background: "none", border: "none", cursor: "pointer", color: "#2e3a1f88", fontSize: 14, fontFamily: "inherit" }}>
-            ↺
-          </button>
-          {/* Zoom display + fit */}
+            style={{ height: "100%", padding: "0 12px", background: "none", border: "none", cursor: "pointer", color: "#2e3a1f88", fontSize: 14, fontFamily: "inherit" }}>↺</button>
           <button title="Přizpůsobit parcelu na obrazovku ( F )" onClick={fitParcel}
             style={{ height: "100%", padding: "0 10px", background: "none", border: "none", cursor: "pointer", color: "#2e3a1f", fontSize: 11, fontFamily: "inherit", letterSpacing: "0.04em", minWidth: 52, textAlign: "center" }}>
             {zoomDisplay}%
           </button>
-          {/* Rotate CW */}
           <button title="Otočit pohled o +15° ( ] )" onClick={() => rotateViewport(15 * Math.PI / 180)}
-            style={{ height: "100%", padding: "0 12px", background: "none", border: "none", cursor: "pointer", color: "#2e3a1f88", fontSize: 14, fontFamily: "inherit" }}>
-            ↻
-          </button>
+            style={{ height: "100%", padding: "0 12px", background: "none", border: "none", cursor: "pointer", color: "#2e3a1f88", fontSize: 14, fontFamily: "inherit" }}>↻</button>
         </div>
 
+        {/* Map style toggle */}
         <div style={{ display: "flex", alignItems: "center", height: "100%", borderRight: "1.5px solid #2e3a1f22", padding: "0 8px", gap: 6 }}>
-          <button
-            onClick={() => setEditorMapStyle("map")}
-            style={{
-              padding: "4px 10px",
-              borderRadius: 999,
-              border: "1.5px solid #2e3a1f33",
-              background: editorMapStyle === "map" ? "#2e3a1f" : "transparent",
-              color: editorMapStyle === "map" ? "#F4F5E0" : "#2e3a1f88",
-              fontSize: 11,
-              fontFamily: "inherit",
-              cursor: "pointer",
-              letterSpacing: "0.04em",
-            }}
-          >
-            Mapa
-          </button>
-          <button
-            onClick={() => setEditorMapStyle("satellite")}
-            style={{
-              padding: "4px 10px",
-              borderRadius: 999,
-              border: "1.5px solid #2e3a1f33",
-              background: editorMapStyle === "satellite" ? "#2e3a1f" : "transparent",
-              color: editorMapStyle === "satellite" ? "#F4F5E0" : "#2e3a1f88",
-              fontSize: 11,
-              fontFamily: "inherit",
-              cursor: "pointer",
-              letterSpacing: "0.04em",
-            }}
-          >
-            Satelit
-          </button>
+          {(["map", "satellite"] as const).map(style => (
+            <button key={style} onClick={() => setEditorMapStyle(style)}
+              style={{ padding: "4px 10px", borderRadius: 999, border: "1.5px solid #2e3a1f33", background: editorMapStyle === style ? "#2e3a1f" : "transparent", color: editorMapStyle === style ? "#F4F5E0" : "#2e3a1f88", fontSize: 11, fontFamily: "inherit", cursor: "pointer", letterSpacing: "0.04em" }}>
+              {style === "map" ? "Mapa" : "Satelit"}
+            </button>
+          ))}
         </div>
 
         <div style={{ display: "flex", alignItems: "center", height: "100%" }}>
-          <button onClick={() => { setElements([]); setSelectedIds([]); }} style={{ height: "100%", padding: "0 16px", background: "none", border: "none", borderRight: "1.5px solid #2e3a1f22", cursor: "pointer", color: "#2e3a1f77", fontSize: 12, fontFamily: "inherit", letterSpacing: "0.04em" }}>
+          <button onClick={() => { setElements([]); setSelectedIds([]); }}
+            style={{ height: "100%", padding: "0 16px", background: "none", border: "none", borderRight: "1.5px solid #2e3a1f22", cursor: "pointer", color: "#2e3a1f77", fontSize: 12, fontFamily: "inherit", letterSpacing: "0.04em" }}>
             Vymazat vše
           </button>
           <button style={{ height: "100%", padding: "0 20px", background: "none", border: "none", cursor: "pointer", color: "#2e3a1f", fontSize: 12, fontFamily: "inherit", letterSpacing: "0.04em" }}>
@@ -1344,7 +1305,7 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
         </div>
       </header>
 
-      {/* ── Body ── */}
+      {/* Body */}
       <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
 
         {/* Left sidebar */}
@@ -1379,11 +1340,11 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
             )}
           </div>
           <div style={{ padding: "10px 12px", borderTop: "1.5px solid #2e3a1f11", fontSize: 10, color: "#2e3a1f44", lineHeight: 1.6 }}>
-            Přetáhněte pro umístění · Shift+klik pro vícenásobný výběr · Tažením v prázdném prostoru vyberete oblast · Kolečkem přiblížíte · Prostřední tlačítko nebo mezerník+tažení pro posun
+            Přetáhněte pro umístění · Shift+klik pro vícenásobný výběr · Tažením v prázdném prostoru vyberete oblast · Kolečkem přiblížíte · Prostřední tlačítko nebo mezerník+tažení pro posun · [ ] pro otočení pohledu
           </div>
         </aside>
 
-        {/* Canvas area */}
+        {/* Canvas */}
         <div style={{ flex: 1, position: "relative", overflow: "hidden" }}
           onDragOver={onCanvasDragOver} onDrop={onCanvasDrop} onDragLeave={() => setIsDragOver(false)}>
           {isDragOver && (
@@ -1395,19 +1356,15 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
             style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block" }}
             onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp} />
           {selectionBox && (
-            <div
-              style={{
-                position: "absolute",
-                left: Math.min(selectionBox.startX, selectionBox.x),
-                top: Math.min(selectionBox.startY, selectionBox.y),
-                width: Math.abs(selectionBox.x - selectionBox.startX),
-                height: Math.abs(selectionBox.y - selectionBox.startY),
-                border: "1.5px dashed #2e3a1faa",
-                background: "#2e3a1f1a",
-                pointerEvents: "none",
-                zIndex: 8,
-              }}
-            />
+            <div style={{
+              position: "absolute",
+              left: Math.min(selectionBox.startX, selectionBox.x),
+              top: Math.min(selectionBox.startY, selectionBox.y),
+              width: Math.abs(selectionBox.x - selectionBox.startX),
+              height: Math.abs(selectionBox.y - selectionBox.startY),
+              border: "1.5px dashed #2e3a1faa", background: "#2e3a1f1a",
+              pointerEvents: "none", zIndex: 8,
+            }} />
           )}
           {elements.length === 0 && !isDragOver && (
             <div style={{ position: "absolute", bottom: 24, left: "50%", transform: "translateX(-50%)", pointerEvents: "none" }}>
@@ -1427,35 +1384,14 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
             item={selectedElement}
             selectedCount={selectedIds.length}
             onChange={updated => setElements(prev => prev.map(el => el.id === updated.id ? updated : el))}
-            onDelete={() => {
-              const selectedSet = new Set(selectedIds);
-              setElements(prev => prev.filter(el => !selectedSet.has(el.id)));
-              setSelectedIds([]);
-            }}
+            onDelete={() => { const s = new Set(selectedIds); setElements(prev => prev.filter(el => !s.has(el.id))); setSelectedIds([]); }}
           />
           {selectedIds.length > 1 && (
             <div style={{ padding: "12px 16px", borderTop: "1.5px solid #2e3a1f11", color: "#2e3a1f77", fontSize: 11, lineHeight: 1.5 }}>
               Vybráno prvků: {selectedIds.length}
               <button
-                onClick={() => {
-                  const selectedSet = new Set(selectedIds);
-                  setElements((prev) => prev.filter((el) => !selectedSet.has(el.id)));
-                  setSelectedIds([]);
-                }}
-                style={{
-                  width: "100%",
-                  marginTop: 8,
-                  padding: "8px",
-                  background: "none",
-                  border: "1.5px solid #cc444422",
-                  borderRadius: 3,
-                  color: "#cc4444",
-                  fontSize: 12,
-                  cursor: "pointer",
-                  fontFamily: "inherit",
-                  letterSpacing: "0.04em",
-                }}
-              >
+                onClick={() => { const s = new Set(selectedIds); setElements(prev => prev.filter(el => !s.has(el.id))); setSelectedIds([]); }}
+                style={{ width: "100%", marginTop: 8, padding: "8px", background: "none", border: "1.5px solid #cc444422", borderRadius: 3, color: "#cc4444", fontSize: 12, cursor: "pointer", fontFamily: "inherit", letterSpacing: "0.04em" }}>
                 Odebrat vybrané
               </button>
             </div>
@@ -1467,21 +1403,14 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
               </div>
               {[...elements].reverse().map(el => {
                 const cat = ELEMENT_CATALOG.flatMap(c => c.items).find(i => i.type === el.type);
-                const isSelected = selectedIds.includes(el.id);
+                const isSel = selectedIds.includes(el.id);
                 return (
-                  <div
-                    key={el.id}
-                    onClick={(e) => {
-                      if (e.shiftKey) {
-                        setSelectedIds((prev) => (
-                          prev.includes(el.id) ? prev.filter((id) => id !== el.id) : [...prev, el.id]
-                        ));
-                        return;
-                      }
-                      setSelectedIds(isSelected ? [] : [el.id]);
+                  <div key={el.id}
+                    onClick={e => {
+                      if (e.shiftKey) { setSelectedIds(prev => prev.includes(el.id) ? prev.filter(id => id !== el.id) : [...prev, el.id]); return; }
+                      setSelectedIds(isSel ? [] : [el.id]);
                     }}
-                    style={{ padding: "7px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: 8, background: isSelected ? "#2e3a1f0d" : "transparent", borderLeft: isSelected ? "2.5px solid #2e3a1f" : "2.5px solid transparent", transition: "all 0.1s" }}
-                  >
+                    style={{ padding: "7px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: 8, background: isSel ? "#2e3a1f0d" : "transparent", borderLeft: isSel ? "2.5px solid #2e3a1f" : "2.5px solid transparent", transition: "all 0.1s" }}>
                     <span style={{ fontSize: 14 }}>{cat?.icon}</span>
                     <span style={{ fontSize: 11, color: "#2e3a1f", letterSpacing: "0.02em" }}>{cat?.label}</span>
                   </div>
@@ -1491,6 +1420,13 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
           )}
         </aside>
       </div>
+
+      {/* Plan summary bar */}
+      <PlanSummaryBar
+        stats={planStats}
+        expanded={barExpanded}
+        onToggle={() => setBarExpanded(v => !v)}
+      />
     </div>
   );
 }
