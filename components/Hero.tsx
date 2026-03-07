@@ -42,9 +42,9 @@ export default function Hero() {
           </p>
 
           <div className="flex flex-wrap gap-3">
-            <button className="inline-flex items-center gap-2 px-6 py-3 rounded-full font-medium bg-btn text-text shadow-[0_4px_14px_rgba(172,193,138,0.45)] hover:bg-btn-dark hover:-translate-y-0.5 active:translate-y-0 transition-all">
-              Moje okolí →
-            </button>
+            <a href="/map" className="inline-flex items-center gap-2 px-6 py-3 rounded-full font-medium bg-btn text-text shadow-[0_4px_14px_rgba(172,193,138,0.45)] hover:bg-btn-dark hover:-translate-y-0.5 active:translate-y-0 transition-all">
+              Vyzkoušet →
+            </a>
             <a href="#features" className="inline-flex items-center gap-2 px-6 py-3 rounded-full font-medium text-sm bg-fg text-text-mid hover:bg-fg/80 hover:text-text transition-colors">
               Prozkoumat řešení
             </a>

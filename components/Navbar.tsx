@@ -46,14 +46,20 @@ export default function Navbar() {
 
         <div className="justify-self-end">
           <Link
-            href="/map"
-            className={`px-5 py-2 rounded-full text-sm font-medium shadow-[0_4px_14px_rgba(172,193,138,0.45)] transition-all hover:-translate-y-0.5 active:translate-y-0 ${
+            href="https://github.com/Galacti-Official/Cool-Squares"
+            aria-label="GitHub"
+            className={`inline-flex items-center justify-center px-4 py-2 rounded-full shadow-[0_4px_14px_rgba(172,193,138,0.45)] transition-all hover:-translate-y-0.5 active:translate-y-0 ${
               scrolled
                 ? "bg-[#f4f5e0] text-black shadow-lg scale-105 hover:shadow-xl"
                 : "bg-btn text-text hover:bg-btn-dark hover:shadow-[0_6px_20px_rgba(172,193,138,0.55)]"
             }`}
           >
-            Začít
+            <Image
+              src="/GitHub_Lockup_Black_Clearspace.svg"
+              alt="GitHub"
+              width={92}
+              height={20}
+            />
           </Link>
         </div>
       </div>
