@@ -5,7 +5,7 @@ export default function Hero() {
 
   return (
     <section className="relative py-28 overflow-hidden snap-start">
-      <div className="relative z-10 max-w-6xl mx-auto px-6 flex items-center justify-between gap-10">
+      <div className="relative z-10 max-w-6xl mx-auto px-6 flex items-center lg:items-stretch justify-between gap-10">
         {/* Left content */}
         <div className="max-w-xl">
           <h1 className="font-display text-5xl md:text-[4.2rem] leading-[1.1] text-text mb-5">
@@ -27,7 +27,7 @@ export default function Hero() {
           </div>
         </div>
 
-        <div className="hidden lg:block w-[420px] shrink-0 -mt-8">
+        <div className="hidden lg:flex w-[420px] shrink-0 self-stretch">
           <StlPreview modelPath={modelPath} />
         </div>
       </div>

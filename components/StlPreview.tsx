@@ -17,17 +17,19 @@ export default function StlPreview({ modelPath }: StlPreviewProps) {
 
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
-    camera.position.set(0, 2.4, 5);
-    camera.lookAt(0, 0.35, 0);
+    camera.position.set(0, 2.2, 4.2);
+    camera.lookAt(0, 0.4, 0);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     container.appendChild(renderer.domElement);
 
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
-    const keyLight = new THREE.DirectionalLight(0xffffff, 0.9);
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.75);
+    const keyLight = new THREE.DirectionalLight(0xffffff, 1.05);
     keyLight.position.set(3, 4, 3);
-    scene.add(ambientLight, keyLight);
+    const rimLight = new THREE.DirectionalLight(0xbfd3ff, 0.45);
+    rimLight.position.set(-3, 2, -2);
+    scene.add(ambientLight, keyLight, rimLight);
 
     const loader = new STLLoader();
     let mesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial> | null = null;
@@ -37,9 +39,9 @@ export default function StlPreview({ modelPath }: StlPreviewProps) {
       geometry.computeVertexNormals();
 
       const material = new THREE.MeshStandardMaterial({
-        color: "#758b52",
-        metalness: 0.1,
-        roughness: 0.7,
+        color: "#cfd6df",
+        metalness: 0.25,
+        roughness: 0.35,
       });
 
       mesh = new THREE.Mesh(geometry, material);
@@ -48,7 +50,7 @@ export default function StlPreview({ modelPath }: StlPreviewProps) {
 
       const box = new THREE.Box3().setFromObject(mesh);
       const size = box.getSize(new THREE.Vector3()).length();
-      const scale = size > 0 ? 2.9 / size : 1;
+      const scale = size > 0 ? 4.2 / size : 1;
       mesh.scale.setScalar(scale);
 
       scene.add(mesh);
@@ -98,7 +100,7 @@ export default function StlPreview({ modelPath }: StlPreviewProps) {
   return (
     <div
       ref={containerRef}
-      className="h-[360px] w-full"
+      className="h-full w-full"
       aria-label="3D STL preview"
     />
   );
