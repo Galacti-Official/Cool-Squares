@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { ITEMS, type Item } from "../encyclopedia/itemData";
 import { formatAreaByMagnitude } from "./areaFormat";
+import ClimateMap from "./ClimateMap";
 
 const StlPreview = dynamic(() => import("../StlPreview"), { ssr: false });
 
@@ -565,10 +566,11 @@ function PropertiesPanel({ item, selectedCount, onChange, onDelete }: {
 }
 
 
-function PlanSummaryBar({ stats, expanded, onToggle }: {
+function PlanSummaryBar({ stats, expanded, onToggle, area }: {
   stats: PlanStats | null;
   expanded: boolean;
   onToggle: () => void;
+  area: SelectedArea;
 }) {
   const hasElements = stats && stats.breakdown.length > 0;
   const tempColor = !stats || stats.tempDelta === 0 ? "#2e3a1f66"
@@ -649,6 +651,10 @@ function PlanSummaryBar({ stats, expanded, onToggle }: {
                   </div>
                 </>
               )}
+            <div style={{ marginTop: 12 }}>
+              <div style={{ fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "#2e3a1f66", marginBottom: 8 }}>Klimatická mapa</div>
+              <ClimateMap area={area} height={220} mode="czech" />
+            </div>
           </div>
         </div>
       )}
@@ -1449,6 +1455,7 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
         stats={planStats}
         expanded={barExpanded}
         onToggle={() => setBarExpanded(v => !v)}
+        area={area}
       />
     </div>
   );

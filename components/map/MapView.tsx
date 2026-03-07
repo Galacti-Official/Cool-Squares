@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import ParcelEditor from "./ParcelEditor";
 import { formatAreaByMagnitude, formatDistanceByMagnitude } from "./areaFormat";
+import ClimateMap from "./ClimateMap";
 
 type Mode = "idle" | "drawing";
 type AppPage = "map" | "results" | "editor";
@@ -116,10 +117,7 @@ function MiniMap({ area }: { area: SelectedArea }) {
 
 const NAV_ITEMS = [
   { id: "overview", label: "Přehled",        icon: "◈" },
-  { id: "land",     label: "Využití půdy",   icon: "⬡" },
   { id: "climate",  label: "Klima",          icon: "◌" },
-  { id: "infra",    label: "Infrastruktura", icon: "⊞" },
-  { id: "export",   label: "Export",         icon: "↗" },
 ];
 
 function ResultsPage({
@@ -225,7 +223,16 @@ function ResultsPage({
               ))}
             </div>
           )}
-          {activeTab !== "overview" && (
+          {activeTab === "climate" && (
+            <div style={{ maxWidth: 900 }}>
+              <h1 style={{ fontSize: 28, fontWeight: 400, color: "#2e3a1f", marginBottom: 6, lineHeight: 1.2, fontStyle: "italic" }}>Klima</h1>
+              <p style={{ fontSize: 13, color: "#2e3a1f77", marginBottom: 20, letterSpacing: "0.04em" }}>
+                Aktuální teplotní pole v okolí vybrané parcely (zdroj: Open-Meteo).
+              </p>
+              <ClimateMap area={area} height={360} mode="czech" />
+            </div>
+          )}
+          {activeTab !== "overview" && activeTab !== "climate" && (
             <div style={{ maxWidth: 820 }}>
               <h1 style={{ fontSize: 28, fontWeight: 400, color: "#2e3a1f", marginBottom: 6, lineHeight: 1.2, fontStyle: "italic" }}>{NAV_ITEMS.find(n => n.id === activeTab)?.label}</h1>
               <p style={{ fontSize: 13, color: "#2e3a1f77", marginBottom: 36, letterSpacing: "0.04em" }}>Tato sekce se připravuje.</p>
