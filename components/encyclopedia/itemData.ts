@@ -7,7 +7,7 @@ export interface Item {
   emoji: string;
   description: string;
   coolingEffect: number;
-  cost: "low" | "medium" | "high";
+  cost: number;
   maintenance: "low" | "medium" | "high";
   lifespan: string;       
   material: string;
@@ -20,24 +20,22 @@ export interface Item {
 
 export const ITEMS: Item[] = [
   {
-    id: "1",
-    name: "Rostlinná stěna",
+    id: "plant-wall",        
+    name: "Rostlinná stěna",   
     category: "Květináče",
-    emoji: "🪴",
-    description: "Rostlinná stěna, která vytvoří příjemné zastíněné prostředí.",
+    emoji: "🪴",               
+    description: "...",       
     coolingEffect: 5,
-    cost: "high",
+    cost: 60000,
     maintenance: "low",
     lifespan: "10–15 let",
-    material: "Dřevo, hliník, nerezová ocel",
-    weight: "2 000 kg (s půdou a plně zavlažené)",
+    material: "Dřevo, hliník",
+    weight: "2 000 kg",
     dimensions: "3 × 2 × 2 m",
     waterNeeded: true,
-    tags: ["modulární", "stěna", "venkovní"],
-    specs: {
-      "Barva": "Šedo-hnědá",
-    },
-  },
+    tags: [],
+    specs: {},
+  }
 ];
 
 export const CATEGORIES: Category[] = ["Květináče", "Nádoby", "Půdní pokryv", "Vodní prvky", "Posezení"];

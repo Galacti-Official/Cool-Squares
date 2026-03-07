@@ -2,9 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-export interface SelectedArea {
+interface SelectedArea {
   points: [number, number][];
   bounds: { north: number; south: number; east: number; west: number };
   areaSqKm: number;
@@ -33,6 +31,18 @@ interface Viewport {
   y: number;      // pan y (screen offset)
   zoom: number;
   angle: number;  // radians
+}
+
+interface RotateHandleState {
+  id: string;
+  x: number;
+  y: number;
+  radius: number;
+}
+
+interface RotateDragState {
+  id: string;
+  angleOffsetDeg: number;
 }
 
 interface PlanStats {
@@ -79,27 +89,30 @@ function makeProjection(
   const midLat = (minLat + maxLat) / 2;
 
   const R = 6371000;
-  const bboxWMetres = ((maxLng - minLng) * Math.PI / 180) * R * Math.cos(midLat * Math.PI / 180);
+  const metresPerDegLat = (Math.PI / 180) * R;
+  const metresPerDegLng = Math.max(0.000001, metresPerDegLat * Math.cos(midLat * Math.PI / 180));
+  const bboxWMetres = Math.max(0.0001, (maxLng - minLng) * metresPerDegLng);
+  const bboxHMetres = Math.max(0.0001, (maxLat - minLat) * metresPerDegLat);
 
   const drawW = canvasW - pad * 2;
   const drawH = canvasH - pad * 2;
-  const bboxW = maxLng - minLng || 0.0001;
-  const bboxH = maxLat - minLat || 0.0001;
-  const scaleDeg = Math.min(drawW / bboxW, drawH / bboxH);
-  const pixelsPerMetre = bboxWMetres > 0 ? (bboxW * scaleDeg) / bboxWMetres : 1;
 
-  const fittedW = bboxW * scaleDeg;
-  const fittedH = bboxH * scaleDeg;
+  const scaleX = drawW / bboxWMetres;
+  const scaleY = drawH / bboxHMetres;
+  const pixelsPerMetre = Math.min(scaleX, scaleY);
+
+  const fittedW = bboxWMetres * pixelsPerMetre;
+  const fittedH = bboxHMetres * pixelsPerMetre;
   const offsetX = pad + (drawW - fittedW) / 2;
   const offsetY = pad + (drawH - fittedH) / 2;
 
   const project = ([lat, lng]: [number, number]): [number, number] => [
-    offsetX + (lng - minLng) * scaleDeg,
-    offsetY + (maxLat - lat) * scaleDeg,
+    offsetX + (lng - minLng) * metresPerDegLng * pixelsPerMetre,
+    offsetY + (maxLat - lat) * metresPerDegLat * pixelsPerMetre,
   ];
   const unproject = ([x, y]: [number, number]): [number, number] => [
-    maxLat - (y - offsetY) / scaleDeg,
-    minLng + (x - offsetX) / scaleDeg,
+    maxLat - (y - offsetY) / (metresPerDegLat * pixelsPerMetre),
+    minLng + (x - offsetX) / (metresPerDegLng * pixelsPerMetre),
   ];
 
   return { project, unproject, pixelsPerMetre };
@@ -107,52 +120,64 @@ function makeProjection(
 
 // ─── Element catalog ──────────────────────────────────────────────────────────
 
-const ELEMENT_CATALOG = [
+type CatalogEntry = {
+  type: string;
+  label: string;
+  icon: string;
+  w: number;
+  h: number;
+  shape: string;
+  color: string;
+  desc: string;
+  modelPath?: string;
+};
+
+const ELEMENT_CATALOG: { category: string; items: CatalogEntry[] }[] = [
   {
-    category: "Nádoby",
+    category: "Placeholder",
     items: [
-      { type: "pot_small",    label: "Malý květináč",     icon: "🪴", w: 0.30, h: 0.30, shape: "circle",  color: "#8B6F47", desc: "ø 30 cm" },
-      { type: "pot_large",    label: "Velký květináč",    icon: "🏺", w: 0.50, h: 0.50, shape: "circle",  color: "#7A5C3A", desc: "ø 50 cm" },
-      { type: "planter_box",  label: "Truhlík",           icon: "▭",  w: 1.20, h: 0.50, shape: "rect",    color: "#6B4F2E", desc: "120×50 cm" },
-      { type: "window_box",   label: "Okenní truhlík",    icon: "▭",  w: 0.80, h: 0.25, shape: "rect",    color: "#8B6F47", desc: "80×25 cm" },
-      { type: "hanging",      label: "Závěsný koš",       icon: "⊕",  w: 0.30, h: 0.30, shape: "circle",  color: "#9E7B56", desc: "ø 30 cm" },
+      { type: "pot_small",    label: "Malý květináč",  icon: "🪴", w: 0.30, h: 0.30, shape: "circle",  color: "#8B6F47", desc: "ø 30 cm" },
+      { type: "pot_large",    label: "Velký květináč", icon: "🏺", w: 0.50, h: 0.50, shape: "circle",  color: "#7A5C3A", desc: "ø 50 cm" },
+      { type: "planter_box",  label: "Truhlík",        icon: "▭",  w: 1.20, h: 0.50, shape: "rect",    color: "#6B4F2E", desc: "120×50 cm" },
+      { type: "window_box",   label: "Okenní truhlík", icon: "▭",  w: 0.80, h: 0.25, shape: "rect",    color: "#8B6F47", desc: "80×25 cm" },
+      { type: "hanging",      label: "Závěsný koš",    icon: "⊕",  w: 0.30, h: 0.30, shape: "circle",  color: "#9E7B56", desc: "ø 30 cm" },
     ],
   },
   {
     category: "Pěstební záhony",
     items: [
-      { type: "bed_small",    label: "Vyvýšený záhon S",  icon: "▬",  w: 1.20, h: 0.80, shape: "rect",    color: "#4A7C59", desc: "120×80 cm" },
-      { type: "bed_medium",   label: "Vyvýšený záhon M",  icon: "▬",  w: 2.00, h: 1.00, shape: "rect",    color: "#3D6B4A", desc: "200×100 cm" },
-      { type: "bed_large",    label: "Vyvýšený záhon L",  icon: "▬",  w: 3.00, h: 1.20, shape: "rect",    color: "#336040", desc: "300×120 cm" },
-      { type: "bed_round",    label: "Kulatý záhon",      icon: "◯",  w: 1.20, h: 1.20, shape: "circle",  color: "#4A7C59", desc: "ø 120 cm" },
-      { type: "keyhole",      label: "Záhon keyhole",     icon: "◌",  w: 1.80, h: 1.80, shape: "keyhole", color: "#5A8C6A", desc: "ø 180 cm" },
+      { type: "bed_small",    label: "Vyvýšený záhon S", icon: "▬",  w: 1.20, h: 0.80, shape: "rect",    color: "#4A7C59", desc: "120×80 cm" },
+      { type: "bed_medium",   label: "Vyvýšený záhon M", icon: "▬",  w: 2.00, h: 1.00, shape: "rect",    color: "#3D6B4A", desc: "200×100 cm" },
+      { type: "bed_large",    label: "Vyvýšený záhon L", icon: "▬",  w: 3.00, h: 1.20, shape: "rect",    color: "#336040", desc: "300×120 cm" },
+      { type: "bed_round",    label: "Kulatý záhon",     icon: "◯",  w: 1.20, h: 1.20, shape: "circle",  color: "#4A7C59", desc: "ø 120 cm" },
+      { type: "keyhole",      label: "Záhon keyhole",    icon: "◌",  w: 1.80, h: 1.80, shape: "keyhole", color: "#5A8C6A", desc: "ø 180 cm" },
     ],
   },
   {
     category: "Konstrukce",
     items: [
-      { type: "trellis",      label: "Mříž",              icon: "⊞",  w: 2.00, h: 0.20, shape: "rect",    color: "#8B7355", desc: "200×20 cm" },
-      { type: "arch",         label: "Zahradní oblouk",   icon: "⌢",  w: 0.80, h: 0.30, shape: "arch",    color: "#7A6445", desc: "80×30 cm" },
-      { type: "coldframe",    label: "Pařeniště",         icon: "▦",  w: 1.20, h: 0.80, shape: "rect",    color: "#6B8C9E", desc: "120×80 cm" },
-      { type: "greenhouse",   label: "Mini skleník",      icon: "🏠", w: 2.00, h: 1.50, shape: "rect",    color: "#82A8BC", desc: "200×150 cm" },
-      { type: "compost",      label: "Kompostér",         icon: "♻",  w: 0.80, h: 0.80, shape: "rect",    color: "#7A6840", desc: "80×80 cm" },
+      { type: "trellis",      label: "Mříž",             icon: "⊞",  w: 2.00, h: 0.20, shape: "rect",    color: "#8B7355", desc: "200×20 cm" },
+      { type: "arch",         label: "Zahradní oblouk",  icon: "⌢",  w: 0.80, h: 0.30, shape: "arch",    color: "#7A6445", desc: "80×30 cm" },
+      { type: "coldframe",    label: "Pařeniště",        icon: "▦",  w: 1.20, h: 0.80, shape: "rect",    color: "#6B8C9E", desc: "120×80 cm" },
+      { type: "greenhouse",   label: "Mini skleník",     icon: "🏠", w: 2.00, h: 1.50, shape: "rect",    color: "#82A8BC", desc: "200×150 cm" },
+      { type: "compost",      label: "Kompostér",        icon: "♻",  w: 0.80, h: 0.80, shape: "rect",    color: "#7A6840", desc: "80×80 cm" },
     ],
   },
   {
     category: "Voda",
     items: [
-      { type: "water_barrel", label: "Sud na vodu",       icon: "⬤",  w: 0.60, h: 0.60, shape: "circle",  color: "#5B7FA0", desc: "200 L" },
-      { type: "water_tank",   label: "IBC nádrž",         icon: "▣",  w: 1.00, h: 1.20, shape: "rect",    color: "#4A6E8F", desc: "1000 L" },
-      { type: "pond",         label: "Mini jezírko",      icon: "◯",  w: 1.50, h: 1.00, shape: "ellipse", color: "#3D6B8A", desc: "150×100 cm" },
-      { type: "tap",          label: "Vodovodní bod",     icon: "⊕",  w: 0.10, h: 0.10, shape: "circle",  color: "#5B7FA0", desc: "kohoutek" },
+      { type: "water_barrel", label: "Sud na vodu",    icon: "⬤",  w: 0.60, h: 0.60, shape: "circle",  color: "#5B7FA0", desc: "200 L" },
+      { type: "water_tank",   label: "IBC nádrž",      icon: "▣",  w: 1.00, h: 1.20, shape: "rect",    color: "#4A6E8F", desc: "1000 L" },
+      { type: "pond",         label: "Mini jezírko",   icon: "◯",  w: 1.50, h: 1.00, shape: "ellipse", color: "#3D6B8A", desc: "150×100 cm" },
+      { type: "tap",          label: "Vodovodní bod",  icon: "⊕",  w: 0.10, h: 0.10, shape: "circle",  color: "#5B7FA0", desc: "kohoutek" },
     ],
   },
   {
     category: "Cesty",
     items: [
-      { type: "path_h",       label: "Cesta (V)",         icon: "—",  w: 2.00, h: 0.60, shape: "rect",    color: "#C4B89A", desc: "200×60 cm" },
-      { type: "path_v",       label: "Cesta (S)",         icon: "|",  w: 0.60, h: 2.00, shape: "rect",    color: "#C4B89A", desc: "60×200 cm" },
-      { type: "seating",      label: "Posezení",          icon: "◻",  w: 3.00, h: 3.00, shape: "rect",    color: "#B8A882", desc: "300×300 cm" },
+      { type: "path_h",       label: "Cesta (V)",      icon: "—",  w: 2.00, h: 0.60, shape: "rect",    color: "#C4B89A", desc: "200×60 cm" },
+      { type: "path_v",       label: "Cesta (S)",      icon: "|",  w: 0.60, h: 2.00, shape: "rect",    color: "#C4B89A", desc: "60×200 cm" },
+      { type: "seating",      label: "Posezení",       icon: "◻",  w: 3.00, h: 3.00, shape: "rect",    color: "#B8A882", desc: "300×300 cm" },
     ],
   },
 ];
@@ -280,6 +305,52 @@ function computePlanStats(elements: PlacedElement[], parcelAreaSqM: number, pixe
   return { totalMin, totalMax, tempDelta, coveragePct, breakdown };
 }
 
+function PlanSummaryBar({
+  stats,
+  expanded,
+  onToggle,
+}: {
+  stats: PlanStats | null;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const noData = !stats;
+  return (
+    <div style={{ borderTop: "1.5px solid #2e3a1f22", background: "#f0f2df", padding: "8px 12px" }}>
+      <button
+        onClick={onToggle}
+        style={{
+          width: "100%",
+          border: "none",
+          background: "transparent",
+          cursor: "pointer",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          color: "#2e3a1f",
+          fontSize: 12,
+          letterSpacing: "0.04em",
+          fontFamily: "inherit",
+          padding: "4px 2px",
+        }}
+      >
+        <span>
+          {noData
+            ? "Přidejte prvky pro odhad plánu"
+            : `Odhad nákladů: ${formatCZK(stats.totalMin)} - ${formatCZK(stats.totalMax)} · Ochlazení: ${stats.tempDelta.toFixed(2)}°C`}
+        </span>
+        <span style={{ fontSize: 14 }}>{expanded ? "▴" : "▾"}</span>
+      </button>
+      {expanded && !noData && (
+        <div style={{ marginTop: 6, fontSize: 11, color: "#2e3a1f77", display: "flex", gap: 12, flexWrap: "wrap" }}>
+          <span>Pokrytí: {stats.coveragePct.toFixed(1)}%</span>
+          <span>Položek: {stats.breakdown.reduce((sum, row) => sum + row.count, 0)}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Canvas shape renderer ────────────────────────────────────────────────────
 
 function drawShape(
@@ -383,225 +454,135 @@ function drawShape(
 // ─── Sidebar catalog item ─────────────────────────────────────────────────────
 
 function CatalogItem({ item, onDragStart }: { item: any; onDragStart: (e: React.DragEvent, item: any) => void }) {
-  const p = ELEMENT_PRICES[item.type];
-  const priceLabel = p
-    ? `${p.min >= 1000 ? `${(p.min / 1000).toFixed(p.min % 1000 === 0 ? 0 : 1)}k` : p.min}–${p.max >= 1000 ? `${(p.max / 1000).toFixed(p.max % 1000 === 0 ? 0 : 1)}k` : p.max} Kč`
-    : null;
-
   return (
     <div
       draggable
-      onDragStart={e => onDragStart(e, item)}
-      title={`${item.desc}${p ? ` · ${formatCZK(p.min)}–${formatCZK(p.max)}` : ""}`}
-      style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, padding: "10px 6px", cursor: "grab", border: "1.5px solid transparent", borderRadius: 4, transition: "all 0.12s", userSelect: "none" }}
-      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = "#2e3a1f33"; (e.currentTarget as HTMLElement).style.background = "#2e3a1f08"; }}
-      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = "transparent"; (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+      onDragStart={(e) => onDragStart(e, item)}
+      title={item.desc}
+      style={{
+        display: "flex", flexDirection: "column", alignItems: "center",
+        gap: 4, padding: "10px 6px", cursor: "grab",
+        border: "1.5px solid transparent", borderRadius: 4,
+        transition: "all 0.12s", userSelect: "none",
+      }}
+      onMouseEnter={e => {
+        (e.currentTarget as HTMLElement).style.borderColor = "#2e3a1f33";
+        (e.currentTarget as HTMLElement).style.background = "#2e3a1f08";
+      }}
+      onMouseLeave={e => {
+        (e.currentTarget as HTMLElement).style.borderColor = "transparent";
+        (e.currentTarget as HTMLElement).style.background = "transparent";
+      }}
     >
-      <div style={{ width: 36, height: 36, borderRadius: 4, background: item.color + "33", border: `1.5px solid ${item.color}66`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>
+      <div style={{
+        width: 36, height: 36, borderRadius: 4,
+        background: item.color + "33",
+        border: `1.5px solid ${item.color}66`,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        fontSize: 18,
+      }}>
         {item.icon}
       </div>
-      <span style={{ fontSize: 9, letterSpacing: "0.06em", textTransform: "uppercase", color: "#2e3a1f88", textAlign: "center", lineHeight: 1.2, maxWidth: 52, fontFamily: "inherit" }}>
-        {item.label}
-      </span>
-      {priceLabel && (
-        <span style={{ fontSize: 8, color: "#2e3a1f55", fontFamily: "inherit", textAlign: "center" }}>
-          {priceLabel}
-        </span>
-      )}
+      <span style={{
+        fontSize: 9, letterSpacing: "0.06em", textTransform: "uppercase",
+        color: "#2e3a1f88", textAlign: "center", lineHeight: 1.2, maxWidth: 52,
+        fontFamily: "inherit",
+      }}>{item.label}</span>
     </div>
   );
 }
 
-// ─── Properties panel ─────────────────────────────────────────────────────────
 
-function PropertiesPanel({ item, selectedCount, onChange, onDelete }: {
+function PropertiesPanel({
+  item,
+  selectedCount,
+  onChange,
+  onDelete,
+}: {
   item: PlacedElement | null;
+  catalogItem: CatalogEntry | undefined;
   selectedCount: number;
   onChange: (item: PlacedElement) => void;
   onDelete: () => void;
 }) {
   if (!item) return (
     <div style={{ padding: "20px 16px", color: "#2e3a1f55", fontSize: 12, fontStyle: "italic", textAlign: "center" }}>
-      {selectedCount > 1 ? "Vybráno více prvků" : "Vyberte prvek pro úpravu jeho vlastností"}
+      {selectedCount > 1
+        ? "Vybráno více prvků"
+        : "Vyberte prvek pro úpravu jeho vlastností"}
     </div>
   );
+
   const catalogItem = ELEMENT_CATALOG.flatMap(c => c.items).find(i => i.type === item.type);
-  const price = ELEMENT_PRICES[item.type];
 
   return (
     <div style={{ padding: "16px" }}>
-      <div style={{ fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "#2e3a1f88", marginBottom: 12 }}>Vlastnosti</div>
+      <div style={{ fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "#2e3a1f88", marginBottom: 12 }}>
+        Vlastnosti
+      </div>
       <div style={{ marginBottom: 12 }}>
         <div style={{ fontSize: 15, color: "#2e3a1f", fontStyle: "italic", marginBottom: 2 }}>{catalogItem?.label}</div>
         <div style={{ fontSize: 11, color: "#2e3a1f55" }}>{catalogItem?.desc}</div>
-        {price && (
-          <div style={{ fontSize: 10, color: "#2e3a1f77", marginTop: 4 }}>
-            {formatCZK(price.min)} – {formatCZK(price.max)}
-          </div>
-        )}
-      </div>
-      <div style={{ marginBottom: 10 }}>
-        <div style={{ fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "#2e3a1f77", marginBottom: 4 }}>Rotace (°)</div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <input type="range" min={0} max={360} value={item.rotation || 0}
-            onChange={e => onChange({ ...item, rotation: Number(e.target.value) })}
-            style={{ flex: 1, accentColor: "#2e3a1f" }} />
-          <span style={{ fontSize: 11, color: "#2e3a1f", width: 32, textAlign: "right" }}>{item.rotation || 0}°</span>
+        <div style={{ fontSize: 10, color: "#2e3a1f44", marginTop: 4 }}>
+          {item.wPx}×{item.hPx} px na plátně
         </div>
       </div>
       <div style={{ marginBottom: 10 }}>
-        <div style={{ fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "#2e3a1f77", marginBottom: 4 }}>Poznámka</div>
-        <textarea value={item.note || ""} onChange={e => onChange({ ...item, note: e.target.value })}
-          placeholder="Přidat poznámku…" rows={2}
-          style={{ width: "100%", resize: "none", background: "#2e3a1f08", border: "1.5px solid #2e3a1f22", borderRadius: 3, padding: "6px 8px", fontSize: 12, fontFamily: "inherit", color: "#2e3a1f", outline: "none", boxSizing: "border-box" }} />
+        <div style={{ fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "#2e3a1f77", marginBottom: 4 }}>
+          Rotace (°)
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <input
+            type="range" min={0} max={360} value={item.rotation || 0}
+            onChange={e => onChange({ ...item, rotation: Number(e.target.value) })}
+            style={{ flex: 1, accentColor: "#2e3a1f" }}
+          />
+          <span style={{ fontSize: 11, color: "#2e3a1f", width: 32, textAlign: "right" }}>
+            {item.rotation || 0}°
+          </span>
+        </div>
       </div>
-      <button onClick={onDelete}
-        style={{ width: "100%", padding: "8px", background: "none", border: "1.5px solid #cc444422", borderRadius: 3, color: "#cc4444", fontSize: 12, cursor: "pointer", fontFamily: "inherit", letterSpacing: "0.04em", transition: "all 0.15s" }}
+      <div style={{ marginBottom: 10 }}>
+        <div style={{ fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "#2e3a1f77", marginBottom: 4 }}>
+          Poznámka
+        </div>
+        <textarea
+          value={item.note || ""}
+          onChange={e => onChange({ ...item, note: e.target.value })}
+          placeholder="Přidat poznámku…"
+          rows={2}
+          style={{
+            width: "100%", resize: "none", background: "#2e3a1f08",
+            border: "1.5px solid #2e3a1f22", borderRadius: 3,
+            padding: "6px 8px", fontSize: 12, fontFamily: "inherit",
+            color: "#2e3a1f", outline: "none", boxSizing: "border-box",
+          }}
+        />
+      </div>
+      <button
+        onClick={onDelete}
+        style={{
+          width: "100%", padding: "8px", background: "none",
+          border: "1.5px solid #cc444422", borderRadius: 3,
+          color: "#cc4444", fontSize: 12, cursor: "pointer",
+          fontFamily: "inherit", letterSpacing: "0.04em",
+          transition: "all 0.15s",
+        }}
         onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "#cc444411"; }}
-        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "none"; }}>
+        onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "none"; }}
+      >
         Odebrat prvek
       </button>
     </div>
   );
 }
 
-// ─── Plan Summary Bar ─────────────────────────────────────────────────────────
-
-function PlanSummaryBar({ stats, expanded, onToggle }: {
-  stats: PlanStats | null;
-  expanded: boolean;
-  onToggle: () => void;
-}) {
-  const hasElements = stats && stats.breakdown.length > 0;
-  const tempColor = !stats || stats.tempDelta === 0 ? "#2e3a1f66"
-    : stats.tempDelta < -1.5 ? "#2a7d4f"
-    : stats.tempDelta < -0.5 ? "#5a9e72"
-    : "#8ab89a";
-  const tempLabel = !stats || stats.tempDelta === 0 ? "—" : `${stats.tempDelta.toFixed(1)} °C`;
-  const coverLabel = stats ? `${stats.coveragePct.toFixed(0)}% pokryto` : "0% pokryto";
-
-  return (
-    <div style={{ flexShrink: 0, borderTop: "1.5px solid #2e3a1f22", background: "#F4F5E0", transition: "all 0.22s ease" }}>
-      {/* Always-visible summary row */}
-      <div onClick={onToggle}
-        style={{ height: 44, display: "flex", alignItems: "center", padding: "0 20px", cursor: "pointer", userSelect: "none" }}>
-        {/* Cost */}
-        <div style={{ display: "flex", alignItems: "baseline", gap: 6, minWidth: 220 }}>
-          <span style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "#2e3a1f77" }}>Celkem</span>
-          {hasElements
-            ? <span style={{ fontSize: 14, color: "#2e3a1f", fontStyle: "italic" }}>{formatCZK(stats!.totalMin)} – {formatCZK(stats!.totalMax)}</span>
-            : <span style={{ fontSize: 13, color: "#2e3a1f44", fontStyle: "italic" }}>žádné prvky</span>}
-        </div>
-        <div style={{ width: 1, height: 20, background: "#2e3a1f22", margin: "0 20px" }} />
-        {/* Temperature */}
-        <div style={{ display: "flex", alignItems: "baseline", gap: 6, minWidth: 160 }}>
-          <span style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "#2e3a1f77" }}>Ochlazení</span>
-          <span style={{ fontSize: 14, color: tempColor, fontStyle: "italic" }}>{hasElements ? tempLabel : "—"}</span>
-        </div>
-        <div style={{ width: 1, height: 20, background: "#2e3a1f22", margin: "0 20px" }} />
-        {/* Coverage */}
-        <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1 }}>
-          <span style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "#2e3a1f77" }}>{coverLabel}</span>
-          {hasElements && (
-            <div style={{ flex: 1, maxWidth: 120, height: 4, borderRadius: 2, background: "#2e3a1f18", overflow: "hidden" }}>
-              <div style={{ height: "100%", borderRadius: 2, background: "#4A7C59", width: `${Math.min(100, stats!.coveragePct)}%`, transition: "width 0.3s ease" }} />
-            </div>
-          )}
-        </div>
-        {/* Toggle */}
-        <div style={{ fontSize: 10, color: "#2e3a1f55", letterSpacing: "0.06em", display: "flex", alignItems: "center", gap: 4 }}>
-          <span>{expanded ? "Skrýt" : "Podrobnosti"}</span>
-          <span style={{ fontSize: 12, display: "inline-block", transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>▾</span>
-        </div>
-      </div>
-
-      {/* Expanded breakdown */}
-      {expanded && (
-        <div style={{ borderTop: "1.5px solid #2e3a1f11", padding: "12px 20px 16px", display: "flex", gap: 32, flexWrap: "wrap" }}>
-          {/* Cost breakdown */}
-          <div style={{ flex: 1, minWidth: 260 }}>
-            <div style={{ fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "#2e3a1f66", marginBottom: 8 }}>Rozpis nákladů</div>
-            {!hasElements
-              ? <div style={{ fontSize: 12, color: "#2e3a1f44", fontStyle: "italic" }}>Přetáhněte prvky na parcelu</div>
-              : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                  {stats!.breakdown.map(item => (
-                    <div key={item.label} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ fontSize: 13, width: 20, textAlign: "center" }}>{item.icon}</span>
-                      <span style={{ fontSize: 11, color: "#2e3a1f", flex: 1 }}>{item.label}</span>
-                      <span style={{ fontSize: 10, color: "#2e3a1f88", minWidth: 16, textAlign: "right" }}>×{item.count}</span>
-                      <span style={{ fontSize: 11, color: "#2e3a1f66", minWidth: 140, textAlign: "right", fontStyle: "italic" }}>
-                        {formatCZK(item.min)} – {formatCZK(item.max)}
-                      </span>
-                    </div>
-                  ))}
-                  <div style={{ borderTop: "1px solid #2e3a1f18", marginTop: 4, paddingTop: 6, display: "flex", justifyContent: "flex-end" }}>
-                    <span style={{ fontSize: 12, color: "#2e3a1f", fontStyle: "italic", fontWeight: 500 }}>
-                      {formatCZK(stats!.totalMin)} – {formatCZK(stats!.totalMax)}
-                    </span>
-                  </div>
-                </div>
-              )}
-          </div>
-
-          {/* Microclimate */}
-          <div style={{ minWidth: 220, maxWidth: 320 }}>
-            <div style={{ fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "#2e3a1f66", marginBottom: 8 }}>Vliv na mikroklima</div>
-            {!hasElements
-              ? <div style={{ fontSize: 12, color: "#2e3a1f44", fontStyle: "italic" }}>Přidejte prvky pro odhad</div>
-              : (
-                <>
-                  <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 8 }}>
-                    <span style={{ fontSize: 22, color: tempColor, fontStyle: "italic" }}>{tempLabel}</span>
-                    <span style={{ fontSize: 11, color: "#2e3a1f66" }}>oproti nezasáhnuté parcele</span>
-                  </div>
-                  <div style={{ fontSize: 11, color: "#2e3a1f77", lineHeight: 1.55 }}>
-                    Odhad vychází z kombinace stínění, evapotranspirace rostlin a odpařování vodních prvků. Vodní plochy a stínící konstrukce přispívají nejvíce.
-                  </div>
-                  {[
-                    { label: "Vodní prvky",    types: ["pond", "water_barrel", "water_tank"],                                                               color: "#5B7FA0" },
-                    { label: "Záhony a nádoby", types: ["bed_small","bed_medium","bed_large","bed_round","keyhole","pot_small","pot_large","planter_box","window_box","hanging"], color: "#4A7C59" },
-                    { label: "Konstrukce",      types: ["greenhouse","coldframe","arch","trellis","compost"],                                               color: "#8B7355" },
-                  ].map(group => {
-                    const allCatalogItems = ELEMENT_CATALOG.flatMap(c => c.items);
-                    const groupCost = stats!.breakdown
-                      .filter(b => group.types.some(t => b.label === allCatalogItems.find(i => i.type === t)?.label))
-                      .reduce((s, b) => s + b.max, 0);
-                    if (groupCost === 0) return null;
-                    return (
-                      <div key={group.label} style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 8 }}>
-                        <div style={{ width: 8, height: 8, borderRadius: 2, background: group.color, flexShrink: 0 }} />
-                        <span style={{ fontSize: 10, color: "#2e3a1f88", flex: 1 }}>{group.label}</span>
-                        <div style={{ width: 80, height: 3, borderRadius: 2, background: "#2e3a1f18", overflow: "hidden" }}>
-                          <div style={{ height: "100%", background: group.color, width: `${(groupCost / (stats!.totalMax || 1)) * 100}%` }} />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </>
-              )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
+interface Viewport {
+  x: number;    
+  y: number;    
+  zoom: number;
+  angle: number;
 }
-
-// ─── ParcelEditor ─────────────────────────────────────────────────────────────
-//
-// Keyboard shortcuts:
-//   Scroll wheel            → zoom toward cursor
-//   Middle-click drag       → pan
-//   Space + left drag       → pan
-//   F                       → fit parcel to screen
-//   [ / ]                   → rotate viewport ±15°
-//   Shift+click             → add/remove from selection
-//   Delete / Backspace      → remove selected elements
-//   Escape                  → deselect all
-//
-// Props:
-//   area    — parcel geometry from the map picker
-//   onBack  — called when the user clicks "Back"
 
 export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onBack: () => void }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -617,6 +598,7 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
   const [barExpanded, setBarExpanded] = useState(false);
   const [satTilesVersion, setSatTilesVersion] = useState(0);
   const [satImageStatus, setSatImageStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const satZoomBucket = Math.max(0, Math.floor(Math.log2(Math.max(zoomDisplay, 100) / 100)));
 
   const elementsRef = useRef(elements);
   const selectedIdsRef = useRef(selectedIds);
@@ -625,8 +607,8 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
   const pixelsPerMetreRef = useRef(1);
   const draggingCatalogItem = useRef<any>(null);
   const satelliteTilesRef = useRef<SatelliteTile[]>([]);
-  const rotateHandleRef = useRef<{ id: string; x: number; y: number; radius: number } | null>(null);
-  const rotateDragRef = useRef<{ id: string; angleOffsetDeg: number } | null>(null);
+  const rotateHandleRef = useRef<RotateHandleState | null>(null);
+  const rotateDragRef = useRef<RotateDragState | null>(null);
 
   const vp = useRef<Viewport>({ x: 0, y: 0, zoom: 1, angle: 0 });
   const vpInitialised = useRef(false);
@@ -652,12 +634,20 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
     setSatTilesVersion(v => v + 1);
 
     const { north, south, east, west } = area.bounds;
+    const maxTiles = 36;
     let zoom = 18;
     for (let z = 18; z >= 12; z--) {
-      const count = (Math.abs(lngToTileX(east, z) - lngToTileX(west, z)) + 1)
-                  * (Math.abs(latToTileY(south, z) - latToTileY(north, z)) + 1);
-      if (count <= 36) { zoom = z; break; }
+      const xMin = lngToTileX(west, z);
+      const xMax = lngToTileX(east, z);
+      const yMin = latToTileY(north, z);
+      const yMax = latToTileY(south, z);
+      const count = (Math.abs(xMax - xMin) + 1) * (Math.abs(yMax - yMin) + 1);
+      if (count <= maxTiles) {
+        zoom = z;
+        break;
+      }
     }
+
     const x0 = Math.min(lngToTileX(west, zoom), lngToTileX(east, zoom));
     const x1 = Math.max(lngToTileX(west, zoom), lngToTileX(east, zoom));
     const y0 = Math.min(latToTileY(north, zoom), latToTileY(south, zoom));
@@ -665,25 +655,29 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
 
     let cancelled = false;
     const loads: Promise<SatelliteTile | null>[] = [];
-    for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) {
-      loads.push(new Promise(resolve => {
-        const img = new Image();
-        img.onload = () => resolve({ z: zoom, x, y, img });
-        img.onerror = () => resolve(null);
-        img.src = `https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${zoom}/${y}/${x}`;
-      }));
+    for (let x = x0; x <= x1; x++) {
+      for (let y = y0; y <= y1; y++) {
+        loads.push(new Promise((resolve) => {
+          const img = new Image();
+          img.onload = () => resolve({ z: zoom, x, y, img });
+          img.onerror = () => resolve(null);
+          img.src = `https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${zoom}/${y}/${x}`;
+        }));
+      }
     }
-    Promise.all(loads).then(tiles => {
+
+    Promise.all(loads).then((tiles) => {
       if (cancelled) return;
       const loaded = tiles.filter((t): t is SatelliteTile => t !== null);
       satelliteTilesRef.current = loaded;
       setSatImageStatus(loaded.length > 0 ? "ready" : "error");
-      setSatTilesVersion(v => v + 1);
+      setSatTilesVersion((v) => v + 1);
     });
-    return () => { cancelled = true; };
-  }, [editorMapStyle, area.bounds.north, area.bounds.south, area.bounds.east, area.bounds.west]);
 
-  // ── Viewport helpers ────────────────────────────────────────────────────────
+    return () => {
+      cancelled = true;
+    };
+  }, [editorMapStyle, area.bounds.north, area.bounds.south, area.bounds.east, area.bounds.west]);
 
   function screenToWorld(sx: number, sy: number): [number, number] {
     const { x, y, zoom, angle } = vp.current;
@@ -837,8 +831,15 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
         ctx.save();
         ctx.fillStyle = "#f1f6e0dd";
         ctx.font = `${12 / zoom}px sans-serif`;
-        ctx.textAlign = "center"; ctx.textBaseline = "middle";
-        ctx.fillText(satImageStatus === "error" ? "Satelitní snímky nejsou dostupné" : "Načítám satelitní snímky…", cx, cy);
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(
+          satImageStatus === "error"
+            ? "Satelitní snímky nejsou pro tento pohled dostupné"
+            : "Načítám satelitní snímky…",
+          cx,
+          cy
+        );
         ctx.restore();
       }
 
@@ -882,16 +883,21 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
       // Rotate handle (screen-space, drawn on top)
       rotateHandleRef.current = null;
       if (selectedIdsRef.current.length === 1) {
-        const selId = selectedIdsRef.current[0];
-        const selEl = elementsRef.current.find(el => el.id === selId);
-        if (selEl) {
-          const cx = selEl.x + selEl.wPx / 2, cy = selEl.y + selEl.hPx / 2;
-          const theta = ((selEl.rotation || 0) * Math.PI) / 180;
-          const orbitDist = selEl.hPx / 2 + 28;
-          const [hx, hy] = worldToScreen(cx + Math.sin(theta) * orbitDist, cy - Math.cos(theta) * orbitDist);
-          const hr = 12;
-          rotateHandleRef.current = { id: selId, x: hx, y: hy, radius: hr };
+        const selectedId = selectedIdsRef.current[0];
+        const selectedEl = elementsRef.current.find((el) => el.id === selectedId);
+        if (selectedEl) {
+          const cx = selectedEl.x + selectedEl.wPx / 2;
+          const cy = selectedEl.y + selectedEl.hPx / 2;
+          const theta = ((selectedEl.rotation || 0) * Math.PI) / 180;
+          const orbitDist = selectedEl.hPx / 2 + 28;
+          const hxWorld = cx + Math.sin(theta) * orbitDist;
+          const hyWorld = cy - Math.cos(theta) * orbitDist;
           const [cxs, cys] = worldToScreen(cx, cy);
+          const [hx, hy] = worldToScreen(hxWorld, hyWorld);
+          const hr = 12;
+
+          rotateHandleRef.current = { id: selectedId, x: hx, y: hy, radius: hr };
+
           ctx.save();
           ctx.strokeStyle = "#2e3a1f66"; ctx.lineWidth = 1.2;
           ctx.beginPath(); ctx.moveTo(cxs, cys); ctx.lineTo(hx, hy); ctx.stroke();
@@ -1020,16 +1026,21 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
     vp.current = { zoom, angle: angle + delta, x: cx + dx * c - dy * s, y: cy + dx * s + dy * c };
   }
 
-  function normalizeDeg(d: number) { return ((d % 360) + 360) % 360; }
-  function pointerAngleDeg(cx: number, cy: number, sx: number, sy: number) {
+  function normalizeDeg(deg: number): number {
+    return ((deg % 360) + 360) % 360;
+  }
+
+  function pointerAngleDegFromCenter(cx: number, cy: number, sx: number, sy: number): number {
     return normalizeDeg((Math.atan2(sx - cx, -(sy - cy)) * 180) / Math.PI);
   }
 
   function startRotateDrag(id: string, sx: number, sy: number) {
-    const el = elementsRef.current.find(i => i.id === id);
+    const el = elementsRef.current.find((item) => item.id === id);
     if (!el) return;
     const [cx, cy] = worldToScreen(el.x + el.wPx / 2, el.y + el.hPx / 2);
-    rotateDragRef.current = { id, angleOffsetDeg: pointerAngleDeg(cx, cy, sx, sy) - normalizeDeg(el.rotation || 0) };
+    const pointerDeg = pointerAngleDegFromCenter(cx, cy, sx, sy);
+    const currentDeg = normalizeDeg(el.rotation || 0);
+    rotateDragRef.current = { id, angleOffsetDeg: pointerDeg - currentDeg };
     if (!spaceDown.current && canvasRef.current) canvasRef.current.style.cursor = "grabbing";
   }
   function stopRotateDrag() { rotateDragRef.current = null; }
@@ -1095,8 +1106,12 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
 
     const handle = rotateHandleRef.current;
     if (handle) {
-      const dx = sx - handle.x, dy = sy - handle.y;
-      if (Math.sqrt(dx * dx + dy * dy) <= handle.radius + 2) { startRotateDrag(handle.id, sx, sy); return; }
+      const dx = sx - handle.x;
+      const dy = sy - handle.y;
+      if (Math.sqrt(dx * dx + dy * dy) <= handle.radius + 2) {
+        startRotateDrag(handle.id, sx, sy);
+        return;
+      }
     }
 
     const hit = hitTestScreen(sx, sy);
@@ -1134,10 +1149,17 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
 
     if (rotateDragRef.current) {
       const { id, angleOffsetDeg } = rotateDragRef.current;
-      const el = elementsRef.current.find(i => i.id === id);
-      if (!el) { stopRotateDrag(); return; }
+      const el = elementsRef.current.find((item) => item.id === id);
+      if (!el) {
+        stopRotateDrag();
+        return;
+      }
       const [cx, cy] = worldToScreen(el.x + el.wPx / 2, el.y + el.hPx / 2);
-      setElements(prev => prev.map(i => i.id === id ? { ...i, rotation: normalizeDeg(pointerAngleDeg(cx, cy, sx, sy) - angleOffsetDeg) } : i));
+      const pointerDeg = pointerAngleDegFromCenter(cx, cy, sx, sy);
+      const nextDeg = normalizeDeg(pointerDeg - angleOffsetDeg);
+      setElements((prev) => prev.map((item) => (
+        item.id === id ? { ...item, rotation: nextDeg } : item
+      )));
       if (!spaceDown.current) canvasRef.current!.style.cursor = "grabbing";
       return;
     }
@@ -1237,9 +1259,12 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
     draggingCatalogItem.current = null;
   }
 
-  // ── Derived values ──────────────────────────────────────────────────────────
-
-  const selectedElement = selectedIds.length === 1 ? (elements.find(el => el.id === selectedIds[0]) ?? null) : null;
+  const selectedElement = selectedIds.length === 1
+    ? (elements.find(el => el.id === selectedIds[0]) ?? null)
+    : null;
+  const selectedCatalogItem = selectedElement
+    ? ELEMENT_CATALOG.flatMap(c => c.items).find(i => i.type === selectedElement.type)
+    : undefined;
   const categories = ELEMENT_CATALOG.map(c => c.category);
   const filteredCatalog = ELEMENT_CATALOG
     .map(cat => ({ ...cat, items: cat.items.filter(item => (!activeCategory || cat.category === activeCategory) && (item.label.toLowerCase().includes(sidebarSearch.toLowerCase()) || cat.category.toLowerCase().includes(sidebarSearch.toLowerCase()))) }))
@@ -1382,6 +1407,7 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
           </div>
           <PropertiesPanel
             item={selectedElement}
+            catalogItem={selectedCatalogItem}
             selectedCount={selectedIds.length}
             onChange={updated => setElements(prev => prev.map(el => el.id === updated.id ? updated : el))}
             onDelete={() => { const s = new Set(selectedIds); setElements(prev => prev.filter(el => !s.has(el.id))); setSelectedIds([]); }}
@@ -1410,7 +1436,8 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
                       if (e.shiftKey) { setSelectedIds(prev => prev.includes(el.id) ? prev.filter(id => id !== el.id) : [...prev, el.id]); return; }
                       setSelectedIds(isSel ? [] : [el.id]);
                     }}
-                    style={{ padding: "7px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: 8, background: isSel ? "#2e3a1f0d" : "transparent", borderLeft: isSel ? "2.5px solid #2e3a1f" : "2.5px solid transparent", transition: "all 0.1s" }}>
+                    style={{ padding: "7px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: 8, background: isSel ? "#2e3a1f0d" : "transparent", borderLeft: isSel ? "2.5px solid #2e3a1f" : "2.5px solid transparent", transition: "all 0.1s" }}
+                  >
                     <span style={{ fontSize: 14 }}>{cat?.icon}</span>
                     <span style={{ fontSize: 11, color: "#2e3a1f", letterSpacing: "0.02em" }}>{cat?.label}</span>
                   </div>

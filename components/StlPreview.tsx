@@ -16,9 +16,9 @@ export default function StlPreview({ modelPath }: StlPreviewProps) {
     if (!container) return;
 
     const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 100);
-    camera.position.set(0, 2.2, 4.2);
-    camera.lookAt(0, 0.4, 0);
+    const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 1000);
+    camera.position.set(0, 1.5, 5);
+    camera.lookAt(0, 0, 0);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -32,28 +32,39 @@ export default function StlPreview({ modelPath }: StlPreviewProps) {
     scene.add(ambientLight, keyLight, rimLight);
 
     const loader = new STLLoader();
-    let mesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial> | null = null;
+    let mesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshBasicMaterial> | null = null;
+
+    const fitCameraToMesh = () => {
+      if (!mesh) return;
+      const box = new THREE.Box3().setFromObject(mesh);
+      const sphere = box.getBoundingSphere(new THREE.Sphere());
+      const radius = Math.max(sphere.radius, 0.001);
+      const fov = THREE.MathUtils.degToRad(camera.fov);
+      const distV = radius / Math.tan(fov / 2);
+      const distH = radius / (Math.tan(fov / 2) * camera.aspect);
+      const distance = Math.max(distV, distH) * 1.25;
+
+      camera.position.set(0, radius * 0.15, distance);
+      camera.near = Math.max(0.01, distance / 250);
+      camera.far = distance + radius * 50;
+      camera.lookAt(0, 0, 0);
+      camera.updateProjectionMatrix();
+    };
 
     loader.load(modelPath, (geometry) => {
       geometry.center();
       geometry.computeVertexNormals();
 
-      const material = new THREE.MeshStandardMaterial({
-        color: "#cfd6df",
-        metalness: 0.25,
-        roughness: 0.35,
+      const material = new THREE.MeshBasicMaterial({
+        color: "#5da832",
       });
 
       mesh = new THREE.Mesh(geometry, material);
       mesh.rotation.x = -Math.PI / 2;
-      mesh.position.y = 0.35;
-
-      const box = new THREE.Box3().setFromObject(mesh);
-      const size = box.getSize(new THREE.Vector3()).length();
-      const scale = size > 0 ? 4.2 / size : 1;
-      mesh.scale.setScalar(scale);
+      mesh.position.set(0, 0, 0);
 
       scene.add(mesh);
+      fitCameraToMesh();
     });
 
     const resize = () => {
@@ -64,6 +75,7 @@ export default function StlPreview({ modelPath }: StlPreviewProps) {
       renderer.setSize(width, height);
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
+      fitCameraToMesh();
     };
 
     resize();

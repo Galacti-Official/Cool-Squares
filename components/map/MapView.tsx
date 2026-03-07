@@ -246,7 +246,10 @@ function ResultsPage({
 
 function MapView({ onAreaSelected }: { onAreaSelected: (area: SelectedArea) => void }) {
   const LIGHT_TILES = "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
-  const SATELLITE_TILES = "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
+  const mapTilerKey = process.env.NEXT_PUBLIC_MAPTILER_KEY;
+  const SATELLITE_TILES = mapTilerKey
+    ? `https://api.maptiler.com/tiles/satellite-v2/{z}/{x}/{y}.jpg?key=${mapTilerKey}`
+    : "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
 
   const mapRef = useRef<HTMLDivElement>(null);
   const leafletMapRef = useRef<any>(null);
@@ -292,8 +295,10 @@ function MapView({ onAreaSelected }: { onAreaSelected: (area: SelectedArea) => v
     async function initMap() {
       const L = (window as any).L;
       if (!L || !mapRef.current || leafletMapRef.current) return;
-
-      const map = L.map(mapRef.current, { center: [49.75, 15.5], zoom: 8, zoomControl: false, minZoom: 7 });
+      const map = L.map(mapRef.current, {
+        center: [49.75, 15.5], zoom: 8,
+        zoomControl: false, minZoom: 7, maxZoom: 19,
+      });
       L.control.zoom({ position: "bottomright" }).addTo(map);
       leafletMapRef.current = map;
 
@@ -308,8 +313,16 @@ function MapView({ onAreaSelected }: { onAreaSelected: (area: SelectedArea) => v
       map.createPane("bgPane").style.zIndex = "199";
       map.createPane("czPane").style.zIndex = "200";
 
-      bgLayerRef.current = L.tileLayer(LIGHT_TILES, { attribution: "© OpenStreetMap contributors © CARTO", subdomains: "abcd", maxZoom: 20, pane: "bgPane", opacity: 0.15 }).addTo(map);
-      clipLayerRef.current = L.tileLayer(LIGHT_TILES, { attribution: "", subdomains: "abcd", maxZoom: 20, pane: "czPane" }).addTo(map);
+      const bgTileLayer = L.tileLayer(LIGHT_TILES, {
+        attribution: "© OpenStreetMap contributors © CARTO",
+        subdomains: "abcd", maxZoom: 19, pane: "bgPane", opacity: 0.15,
+      }).addTo(map);
+      bgLayerRef.current = bgTileLayer;
+
+      const czTileLayer = L.tileLayer(LIGHT_TILES, {
+        attribution: "", subdomains: "abcd", maxZoom: 19, pane: "czPane",
+      }).addTo(map);
+      clipLayerRef.current = czTileLayer;
 
       if (czFeature) {
         const czBounds = L.geoJSON(czFeature).getBounds();
