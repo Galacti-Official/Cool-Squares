@@ -7,7 +7,8 @@ import Image from "next/image";
 const links = [
   { href: "/#features", label: "Řešení" },
   { href: "/#how", label: "Jak to funguje?" },
-  { href: "/#data", label: "Data" }
+  { href: "/features", label: "Součásti" },
+  { href: "/map", label: "Plánovač" },
 ];
 
 export default function Navbar() {

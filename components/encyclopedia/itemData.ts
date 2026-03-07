@@ -42,7 +42,13 @@ const rostlinnaBranaDimensions: ItemDimensions = {
   depth: 2,
   height: 3,
 };
+const rostlinnaStenaDimensions: ItemDimensions = {
+  width: 1.8,
+  depth: 2,
+  height: 3,
+};
 const rostlinnaBranaModelPath = encodeURI("/Rostliná brána.stl");
+const rostlinnaStenaModelPath = encodeURI("/Rostliná stěna.stl");
 
 export const ITEMS: Item[] = [
   {
@@ -50,7 +56,7 @@ export const ITEMS: Item[] = [
     name: "Rostlinná brána",
     category: "Květináče",
     emoji: "🪴",
-    description: "Rostlinná stěna, která vytvoří příjemné zastíněné prostředí.",
+    description: "Rostlinná brána, která vytvoří velkou zastíněnou plochu.",
     coolingEffect: 6, 
     cost: "high",
     priceMin: 90000,
@@ -62,6 +68,29 @@ export const ITEMS: Item[] = [
     dimensions: formatDimensions(rostlinnaBranaDimensions),
     modelPath: rostlinnaBranaModelPath,
     dimensionsM: rostlinnaBranaDimensions,
+    waterNeeded: true,
+    tags: ["modulární", "brána", "venkovní"],
+    specs: {
+      "Barva": "Šedo-hnědá",
+    },
+  },
+    {
+    id: "2",
+    name: "Rostlinná stěna",
+    category: "Květináče",
+    emoji: "🪴",
+    description: "Rostlinná stěna, která vytvoří příjemné zastíněné prostředí.",
+    coolingEffect: 6, 
+    cost: "medium",
+    priceMin: 45000,
+    priceMax: 55000,
+    maintenance: "low",
+    lifespan: "10–15 let",
+    material: "Dřevo, hliník, nerezová ocel",
+    weight: "2 500 kg (s půdou a plně zavlažené)",
+    dimensions: formatDimensions(rostlinnaStenaDimensions),
+    modelPath: rostlinnaStenaModelPath,
+    dimensionsM: rostlinnaStenaDimensions,
     waterNeeded: true,
     tags: ["modulární", "brána", "venkovní"],
     specs: {

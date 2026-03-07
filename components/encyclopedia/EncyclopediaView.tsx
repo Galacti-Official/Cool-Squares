@@ -12,6 +12,22 @@ const BADGE = "text-xs font-medium px-2.5 py-1 rounded-full";
 const COST_LABEL = { low: "Nízké", medium: "Střední", high: "Vysoké" } as const;
 const MAINT_LABEL = { low: "Nízká", medium: "Střední", high: "Vysoká" } as const;
 
+function formatCZK(value: number): string {
+  return `${value.toLocaleString("cs-CZ")} Kč`;
+}
+
+function getItemPriceLabel(item: Item): string {
+  if (
+    Number.isFinite(item.priceMin) &&
+    Number.isFinite(item.priceMax) &&
+    (item.priceMin as number) >= 0 &&
+    (item.priceMax as number) >= (item.priceMin as number)
+  ) {
+    return `${formatCZK(item.priceMin as number)} – ${formatCZK(item.priceMax as number)}`;
+  }
+  return COST_LABEL[item.cost];
+}
+
 function CoolingBar({ value }: { value: number }) {
   const pct = Math.min(100, (value / 8) * 100);
   return (
@@ -30,6 +46,8 @@ function CoolingBar({ value }: { value: number }) {
 }
 
 function ItemCard({ item, onClick }: { item: Item; onClick: () => void }) {
+  const priceLabel = getItemPriceLabel(item);
+
   return (
     <button
       onClick={onClick}
@@ -53,7 +71,7 @@ function ItemCard({ item, onClick }: { item: Item; onClick: () => void }) {
 
       <div className="flex items-center gap-2 mt-3 flex-wrap">
         <span className={`${BADGE} ${COST_COLOR[item.cost]}`}>
-          {item.cost === "low" ? "💚" : item.cost === "medium" ? "🟡" : "🔴"} Cena: {COST_LABEL[item.cost]}
+          {item.cost === "low" ? "💚" : item.cost === "medium" ? "🟡" : "🔴"} Cena: {priceLabel}
         </span>
         <span className={`${BADGE} bg-fg text-text-mid`}>
           🔧 Údržba: {MAINT_LABEL[item.maintenance]}
@@ -67,6 +85,8 @@ function ItemCard({ item, onClick }: { item: Item; onClick: () => void }) {
 }
 
 function DetailPanel({ item, onClose }: { item: Item; onClose: () => void }) {
+  const priceLabel = getItemPriceLabel(item);
+
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 sm:p-8">
       <div
@@ -96,7 +116,7 @@ function DetailPanel({ item, onClose }: { item: Item; onClose: () => void }) {
             {[
               { label: "Chladicí efekt", value: `−${item.coolingEffect}°C` },
               { label: "Životnost", value: item.lifespan },
-              { label: "Cena", value: COST_LABEL[item.cost] },
+              { label: "Cena", value: priceLabel },
               { label: "Údržba", value: MAINT_LABEL[item.maintenance] },
             ].map(({ label, value }) => (
               <div key={label} className="bg-fg border border-btn/20 rounded-xl p-3 text-center">

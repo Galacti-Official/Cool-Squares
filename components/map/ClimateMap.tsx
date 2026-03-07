@@ -203,6 +203,19 @@ function geoBoundsToClimateBounds(bounds: any): ClimateArea["bounds"] {
   };
 }
 
+function featureToLatLngRings(feature: any): [number, number][][] {
+  const geom = feature?.geometry;
+  if (!geom) return [];
+  const polygons = geom.type === "Polygon" ? [geom.coordinates] : geom.coordinates;
+  const rings: [number, number][][] = [];
+  polygons.forEach((poly: number[][][]) => {
+    poly.forEach((ring: number[][]) => {
+      rings.push(ring.map((coord) => [coord[1], coord[0]]));
+    });
+  });
+  return rings;
+}
+
 async function loadCzechFeature(): Promise<any | null> {
   try {
     const res = await fetch(CZECH_GEOJSON_URL);
@@ -213,47 +226,6 @@ async function loadCzechFeature(): Promise<any | null> {
   } catch {
     return null;
   }
-}
-
-function applyFeatureClipToPane(map: any, feature: any, paneName: string, clipClass: string, clipId: string) {
-  const paneEl = map.getPane(paneName) as HTMLElement | undefined;
-  if (!paneEl || !feature?.geometry) return;
-
-  const old = paneEl.querySelector(`svg.${clipClass}`);
-  if (old) old.remove();
-
-  const size = map.getSize();
-  const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("class", clipClass);
-  svg.style.cssText = `position:absolute;top:0;left:0;width:${size.x}px;height:${size.y}px;pointer-events:none;overflow:visible;`;
-
-  const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
-  const clipPath = document.createElementNS("http://www.w3.org/2000/svg", "clipPath");
-  clipPath.setAttribute("id", clipId);
-
-  const toPixel = (coord: number[]) => {
-    const pt = map.latLngToContainerPoint([coord[1], coord[0]]);
-    return `${pt.x},${pt.y}`;
-  };
-
-  const geom = feature.geometry;
-  const polys = geom.type === "Polygon" ? [geom.coordinates] : geom.coordinates;
-  let d = "";
-  polys.forEach((poly: number[][][]) => {
-    poly.forEach((ring: number[][]) => {
-      d += `M ${ring.map(toPixel).join(" L ")} Z `;
-    });
-  });
-
-  const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-  path.setAttribute("d", d);
-  path.setAttribute("fill-rule", "evenodd");
-  clipPath.appendChild(path);
-  defs.appendChild(clipPath);
-  svg.appendChild(defs);
-  paneEl.style.clipPath = "";
-  paneEl.insertBefore(svg, paneEl.firstChild);
-  paneEl.style.clipPath = `url(#${clipId})`;
 }
 
 function colorFromTemperature(temp: number, min: number, max: number): string {
@@ -362,8 +334,6 @@ export default function ClimateMap({
   const mapHostRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
   const layersRef = useRef<any[]>([]);
-  const clipCleanupRef = useRef<(() => void) | null>(null);
-  const clipIdRef = useRef(`cz-climate-clip-${Math.random().toString(36).slice(2, 9)}`);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<{ min: number; max: number; avg: number; time: string } | null>(null);
@@ -389,7 +359,8 @@ export default function ClimateMap({
             attributionControl: true,
             preferCanvas: true,
           });
-          mapRef.current.createPane("climatePane").style.zIndex = "410";
+          mapRef.current.createPane("climatePane").style.zIndex = "350";
+          mapRef.current.createPane("maskPane").style.zIndex = "500";
           L.control.zoom({ position: "bottomright" }).addTo(mapRef.current);
           L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
             subdomains: "abcd",
@@ -399,10 +370,6 @@ export default function ClimateMap({
         }
 
         const map = mapRef.current;
-        if (clipCleanupRef.current) {
-          clipCleanupRef.current();
-          clipCleanupRef.current = null;
-        }
         layersRef.current.forEach((layer) => map.removeLayer(layer));
         layersRef.current = [];
 
@@ -441,24 +408,19 @@ export default function ClimateMap({
         }
 
         if (mode === "czech" && czFeature) {
-          const applyClip = () => applyFeatureClipToPane(
-            map,
-            czFeature,
-            "climatePane",
-            "cz-climate-clip",
-            clipIdRef.current
-          );
-          applyClip();
-          map.on("moveend zoomend resize viewreset", applyClip);
-          clipCleanupRef.current = () => {
-            map.off("moveend zoomend resize viewreset", applyClip);
-            const paneEl = map.getPane("climatePane") as HTMLElement | undefined;
-            if (paneEl) {
-              const old = paneEl.querySelector("svg.cz-climate-clip");
-              if (old) old.remove();
-              paneEl.style.clipPath = "";
-            }
-          };
+          const czRings = featureToLatLngRings(czFeature);
+          if (czRings.length > 0) {
+            const worldRing: [number, number][] = [[-90, -180], [-90, 180], [90, 180], [90, -180]];
+            const outsideMask = L.polygon([worldRing, ...czRings], {
+              color: "transparent",
+              fillColor: "#e8ebd8",
+              fillOpacity: 1,
+              fillRule: "evenodd",
+              interactive: false,
+              pane: "maskPane",
+            }).addTo(map);
+            layersRef.current.push(outsideMask);
+          }
         }
 
         if (mode === "czech") {
@@ -485,29 +447,29 @@ export default function ClimateMap({
 
         if (mode === "czech" && czLayer) {
           const czBounds = czLayer.getBounds();
-          map.setMaxBounds(czBounds.pad(0.02));
+          map.setMaxBounds(czBounds.pad(0.08));
           map.fitBounds(czBounds, { padding: [0, 0], maxZoom: 8 });
-          const lockedZoom = map.getZoom();
-          map.setMinZoom(lockedZoom);
-          map.setMaxZoom(lockedZoom);
-          map.scrollWheelZoom.disable();
-          map.doubleClickZoom.disable();
-          map.touchZoom.disable();
-          map.boxZoom.disable();
-          map.keyboard.disable();
-          if (map.tap) map.tap.disable();
+          const fitZoom = map.getZoom();
+          map.setMinZoom(Math.max(4, fitZoom - 2));
+          map.setMaxZoom(Math.min(18, fitZoom + 5));
+          map.scrollWheelZoom.enable();
+          map.doubleClickZoom.enable();
+          map.touchZoom.enable();
+          map.boxZoom.enable();
+          map.keyboard.enable();
+          if (map.tap) map.tap.enable();
         } else if (mode === "czech") {
           map.setMaxBounds([[CZECH_BOUNDS.south, CZECH_BOUNDS.west], [CZECH_BOUNDS.north, CZECH_BOUNDS.east]]);
           map.fitBounds([[CZECH_BOUNDS.south, CZECH_BOUNDS.west], [CZECH_BOUNDS.north, CZECH_BOUNDS.east]], { padding: [0, 0], maxZoom: 8 });
-          const lockedZoom = map.getZoom();
-          map.setMinZoom(lockedZoom);
-          map.setMaxZoom(lockedZoom);
-          map.scrollWheelZoom.disable();
-          map.doubleClickZoom.disable();
-          map.touchZoom.disable();
-          map.boxZoom.disable();
-          map.keyboard.disable();
-          if (map.tap) map.tap.disable();
+          const fitZoom = map.getZoom();
+          map.setMinZoom(Math.max(4, fitZoom - 2));
+          map.setMaxZoom(Math.min(18, fitZoom + 5));
+          map.scrollWheelZoom.enable();
+          map.doubleClickZoom.enable();
+          map.touchZoom.enable();
+          map.boxZoom.enable();
+          map.keyboard.enable();
+          if (map.tap) map.tap.enable();
         } else {
           map.setMaxBounds(null);
           map.setMinZoom(1);
@@ -539,10 +501,6 @@ export default function ClimateMap({
   useEffect(() => {
     return () => {
       if (!mapRef.current) return;
-      if (clipCleanupRef.current) {
-        clipCleanupRef.current();
-        clipCleanupRef.current = null;
-      }
       mapRef.current.remove();
       mapRef.current = null;
       layersRef.current = [];

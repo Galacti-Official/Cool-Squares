@@ -176,6 +176,13 @@ function formatCZK(n: number): string {
   return n.toLocaleString("cs-CZ") + "\u00a0Kč";
 }
 
+function normalizeSearchText(value: string): string {
+  return value
+    .toLocaleLowerCase("cs-CZ")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
 const SNAP = 5;
 const HIT_PADDING_PX = 12;
 function snapTo(v: number) { return Math.round(v / SNAP) * SNAP; }
@@ -197,6 +204,13 @@ function pointInPolygon(point: [number, number], polygon: [number, number][]): b
 function rectWithinPolygon(x: number, y: number, w: number, h: number, polygon: [number, number][]): boolean {
   const corners: [number, number][] = [[x, y], [x + w, y], [x + w, y + h], [x, y + h]];
   return corners.every(corner => pointInPolygon(corner, polygon));
+}
+
+function rectsOverlap(
+  a: { x: number; y: number; w: number; h: number },
+  b: { x: number; y: number; w: number; h: number }
+): boolean {
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 }
 
 
@@ -1078,15 +1092,19 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
 
 
   function hitTestScreen(sx: number, sy: number): PlacedElement | null {
-    for (const el of [...elementsRef.current].reverse()) {
-      const corners: [number, number][] = [
-        worldToScreen(el.x, el.y), worldToScreen(el.x + el.wPx, el.y),
-        worldToScreen(el.x + el.wPx, el.y + el.hPx), worldToScreen(el.x, el.y + el.hPx),
-      ];
-      const xs = corners.map(c => c[0]), ys = corners.map(c => c[1]);
-      if (sx >= Math.min(...xs) - HIT_PADDING_PX && sx <= Math.max(...xs) + HIT_PADDING_PX &&
-          sy >= Math.min(...ys) - HIT_PADDING_PX && sy <= Math.max(...ys) + HIT_PADDING_PX)
-        return el;
+    const ordered = [...elementsRef.current].reverse();
+    for (const padding of [0, HIT_PADDING_PX]) {
+      for (const el of ordered) {
+        const corners: [number, number][] = [
+          worldToScreen(el.x, el.y), worldToScreen(el.x + el.wPx, el.y),
+          worldToScreen(el.x + el.wPx, el.y + el.hPx), worldToScreen(el.x, el.y + el.hPx),
+        ];
+        const xs = corners.map(c => c[0]), ys = corners.map(c => c[1]);
+        if (sx >= Math.min(...xs) - padding && sx <= Math.max(...xs) + padding &&
+            sy >= Math.min(...ys) - padding && sy <= Math.max(...ys) + padding) {
+          return el;
+        }
+      }
     }
     return null;
   }
@@ -1103,11 +1121,24 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
     return [e.clientX - r.left, e.clientY - r.top];
   }
 
-  function canPlaceElementAt(x: number, y: number, wPx: number, hPx: number): boolean {
+  function canPlaceElementAt(
+    x: number,
+    y: number,
+    wPx: number,
+    hPx: number,
+    ignoreIds: Set<string> = new Set()
+  ): boolean {
     const { w, h } = canvasSize.current;
     if (!w || !h) return false;
     const { project } = makeProjection(area.points, w, h, 80);
-    return rectWithinPolygon(x, y, wPx, hPx, area.points.map(project));
+    if (!rectWithinPolygon(x, y, wPx, hPx, area.points.map(project))) return false;
+
+    const candidate = { x, y, w: wPx, h: hPx };
+    for (const el of elementsRef.current) {
+      if (ignoreIds.has(el.id)) continue;
+      if (rectsOverlap(candidate, { x: el.x, y: el.y, w: el.wPx, h: el.hPx })) return false;
+    }
+    return true;
   }
 
   function getElementsInScreenRect(x0: number, y0: number, x1: number, y1: number): string[] {
@@ -1184,16 +1215,25 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
 
     if (dragState.current) {
       const { ids, startWorldX, startWorldY, startPositions } = dragState.current;
+      const dragIdsSet = new Set(ids);
       const [wx, wy] = screenToWorld(sx, sy);
       const dx = wx - startWorldX, dy = wy - startWorldY;
       const nextById: Record<string, { x: number; y: number }> = {};
+      const nextRects: { id: string; x: number; y: number; w: number; h: number }[] = [];
       for (const id of ids) {
         const el = elementsRef.current.find(e => e.id === id);
         const sp = startPositions[id];
         if (!el || !sp) continue;
         const nx = snapTo(sp.x + dx), ny = snapTo(sp.y + dy);
-        if (!canPlaceElementAt(nx, ny, el.wPx, el.hPx)) return;
+        if (!canPlaceElementAt(nx, ny, el.wPx, el.hPx, dragIdsSet)) return;
         nextById[id] = { x: nx, y: ny };
+        nextRects.push({ id, x: nx, y: ny, w: el.wPx, h: el.hPx });
+      }
+
+      for (let i = 0; i < nextRects.length; i++) {
+        for (let j = i + 1; j < nextRects.length; j++) {
+          if (rectsOverlap(nextRects[i], nextRects[j])) return;
+        }
       }
       setElements(prev => prev.map(el => { const n = nextById[el.id]; return n ? { ...el, ...n } : el; }));
       return;
@@ -1279,8 +1319,21 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
 
   const selectedElement = selectedIds.length === 1 ? (elements.find(el => el.id === selectedIds[0]) ?? null) : null;
   const categories = ELEMENT_CATALOG.map(c => c.category);
+  const normalizedSidebarSearch = normalizeSearchText(sidebarSearch.trim());
   const filteredCatalog = ELEMENT_CATALOG
-    .map(cat => ({ ...cat, items: cat.items.filter(item => (!activeCategory || cat.category === activeCategory) && (item.label.toLowerCase().includes(sidebarSearch.toLowerCase()) || cat.category.toLowerCase().includes(sidebarSearch.toLowerCase()))) }))
+    .map((cat) => {
+      const normalizedCategory = normalizeSearchText(cat.category);
+      const items = cat.items.filter((item) => {
+        if (activeCategory && cat.category !== activeCategory) return false;
+        if (!normalizedSidebarSearch) return true;
+        const normalizedLabel = normalizeSearchText(item.label);
+        return (
+          normalizedLabel.includes(normalizedSidebarSearch) ||
+          normalizedCategory.includes(normalizedSidebarSearch)
+        );
+      });
+      return { ...cat, items };
+    })
     .filter(cat => cat.items.length > 0);
 
   const parcelAreaSqM = area.areaSqKm * 1_000_000;
