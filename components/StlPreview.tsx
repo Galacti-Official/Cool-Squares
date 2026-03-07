@@ -8,12 +8,14 @@ type StlPreviewProps = {
   modelPath: string;
   zoom?: number;
   className?: string;
+  rotationPeriodMs?: number;
 };
 
 export default function StlPreview({
   modelPath,
   zoom = 1,
   className = "h-full w-full",
+  rotationPeriodMs = 17500,
 }: StlPreviewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
 
@@ -39,6 +41,7 @@ export default function StlPreview({
 
     const loader = new STLLoader();
     let mesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial> | null = null;
+    const rotationSpeedRadPerSec = (Math.PI * 2) / (rotationPeriodMs / 1000);
 
     const fitCameraToMesh = () => {
       if (!mesh) return;
@@ -96,16 +99,23 @@ export default function StlPreview({
     window.addEventListener("resize", resize);
 
     let frameId = 0;
-    const renderLoop = () => {
+    let lastFrameTs: number | null = null;
+    const renderLoop = (timestamp: number) => {
+      if (lastFrameTs === null) {
+        lastFrameTs = timestamp;
+      }
+      const deltaSec = (timestamp - lastFrameTs) / 1000;
+      lastFrameTs = timestamp;
+
       if (mesh) {
-        mesh.rotation.z += 0.006;
+        mesh.rotation.z += rotationSpeedRadPerSec * deltaSec;
       }
 
       renderer.render(scene, camera);
       frameId = window.requestAnimationFrame(renderLoop);
     };
 
-    renderLoop();
+    frameId = window.requestAnimationFrame(renderLoop);
 
     return () => {
       window.removeEventListener("resize", resize);
@@ -121,7 +131,7 @@ export default function StlPreview({
         container.removeChild(renderer.domElement);
       }
     };
-  }, [modelPath, zoom]);
+  }, [modelPath, zoom, rotationPeriodMs]);
 
   return (
     <div

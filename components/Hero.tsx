@@ -1,8 +1,32 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import StlPreview from "./StlPreview";
-import { ITEMS } from "./encyclopedia/itemData";
+
+const HERO_MODELS = [
+  {
+    name: "Rostlinná brána",
+    modelPath: encodeURI("/Rostliná brána.stl"),
+    rotationPeriodMs: 8200,
+  },
+  {
+    name: "Rostlinná stěna",
+    modelPath: encodeURI("/Rostliná stěna.stl"),
+    rotationPeriodMs: 7000,
+  },
+];
+const HERO_MODEL_SWITCH_INTERVAL_MS = 6500;
 
 export default function Hero() {
-  const modelPath = ITEMS[0]?.modelPath ?? encodeURI("/Rostliná brána.stl");
+  const [activeModelIndex, setActiveModelIndex] = useState(0);
+  const activeModel = HERO_MODELS[activeModelIndex];
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setActiveModelIndex((prev) => (prev + 1) % HERO_MODELS.length);
+    }, HERO_MODEL_SWITCH_INTERVAL_MS);
+    return () => window.clearInterval(intervalId);
+  }, []);
 
   return (
     <section className="relative py-28 overflow-hidden snap-start">
@@ -28,7 +52,12 @@ export default function Hero() {
         </div>
 
         <div className="hidden lg:block w-[430px] h-[430px] shrink-0 -mt-8">
-          <StlPreview modelPath={modelPath} zoom={0.9} />
+          <StlPreview
+            modelPath={activeModel.modelPath}
+            zoom={0.9}
+            rotationPeriodMs={activeModel.rotationPeriodMs}
+          />
+          <p className="mt-3 text-center text-sm text-text-light">{activeModel.name}</p>
         </div>
       </div>
     </section>
