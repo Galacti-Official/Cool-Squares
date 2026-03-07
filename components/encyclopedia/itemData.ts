@@ -23,6 +23,8 @@ export interface Item {
   description: string;
   coolingEffect: number;
   cost: "low" | "medium" | "high";
+  priceMin?: number;
+  priceMax?: number;
   maintenance: "low" | "medium" | "high";
   lifespan: string;       
   material: string;
@@ -35,9 +37,9 @@ export interface Item {
   specs: Record<string, string>;
 }
 
-const rostlinnaStenaDimensions: ItemDimensions = {
-  width: 2,
-  depth: 1.8,
+const rostlinnaBranaDimensions: ItemDimensions = {
+  width: 4.6,
+  depth: 2,
   height: 3,
 };
 const rostlinnaBranaModelPath = encodeURI("/Rostliná brána.stl");
@@ -45,21 +47,23 @@ const rostlinnaBranaModelPath = encodeURI("/Rostliná brána.stl");
 export const ITEMS: Item[] = [
   {
     id: "1",
-    name: "Rostlinná stěna",
+    name: "Rostlinná brána",
     category: "Květináče",
     emoji: "🪴",
     description: "Rostlinná stěna, která vytvoří příjemné zastíněné prostředí.",
-    coolingEffect: 5,
+    coolingEffect: 6, 
     cost: "high",
+    priceMin: 90000,
+    priceMax: 105000,
     maintenance: "low",
     lifespan: "10–15 let",
     material: "Dřevo, hliník, nerezová ocel",
-    weight: "2 000 kg (s půdou a plně zavlažené)",
-    dimensions: formatDimensions(rostlinnaStenaDimensions),
+    weight: "5 000 kg (s půdou a plně zavlažené)",
+    dimensions: formatDimensions(rostlinnaBranaDimensions),
     modelPath: rostlinnaBranaModelPath,
-    dimensionsM: rostlinnaStenaDimensions,
+    dimensionsM: rostlinnaBranaDimensions,
     waterNeeded: true,
-    tags: ["modulární", "stěna", "venkovní"],
+    tags: ["modulární", "brána", "venkovní"],
     specs: {
       "Barva": "Šedo-hnědá",
     },

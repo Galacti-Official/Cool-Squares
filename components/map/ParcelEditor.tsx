@@ -70,6 +70,18 @@ function costToPrice(cost: Item["cost"]): { min: number; max: number } {
   return { min: 8000, max: 30000 };
 }
 
+function getItemPriceRange(item: Item): { min: number; max: number } {
+  if (
+    Number.isFinite(item.priceMin) &&
+    Number.isFinite(item.priceMax) &&
+    (item.priceMin as number) >= 0 &&
+    (item.priceMax as number) >= (item.priceMin as number)
+  ) {
+    return { min: item.priceMin as number, max: item.priceMax as number };
+  }
+  return costToPrice(item.cost);
+}
+
 const ELEMENT_CATALOG = ITEMS.reduce<{ category: string; items: any[] }[]>((acc, item) => {
   const { w, h } = getItemCanvasDimensions(item);
   const entry = {
@@ -90,7 +102,7 @@ const ELEMENT_CATALOG = ITEMS.reduce<{ category: string; items: any[] }[]>((acc,
 }, []);
 
 const ELEMENT_PRICES: Record<string, { min: number; max: number }> = Object.fromEntries(
-  ITEMS.map(item => [item.id, costToPrice(item.cost)])
+  ITEMS.map(item => [item.id, getItemPriceRange(item)])
 );
 
 const ELEMENT_COOLING: Record<string, number> = Object.fromEntries(
@@ -306,11 +318,12 @@ function CostBadge({ cost }: { cost: Item["cost"] }) {
 }
 
 function ItemTooltip({ item }: { item: Item }) {
-  const price = costToPrice(item.cost);
+  const price = getItemPriceRange(item);
   return (
     <div style={{
       width: 280, background: "#F4F5E0", border: "1.5px solid #2e3a1f33",
       borderRadius: 6, boxShadow: "0 4px 20px #2e3a1f22", padding: "14px 16px",
+      maxHeight: "calc(100vh - 16px)", overflowY: "auto",
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
         <div style={{ width: 36, height: 36, borderRadius: 6, background: "#4A7C5922", border: "1.5px solid #4A7C5966", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>
@@ -419,12 +432,22 @@ function CatalogItem({ item, onDragStart }: { item: any; onDragStart: (e: React.
       const rect = itemRef.current?.getBoundingClientRect();
       if (!rect) return;
       const tooltipWidth = item.itemRef?.modelPath ? 280 : 240;
+      const tooltipHeight = item.itemRef?.modelPath ? 520 : 380;
       const viewportPadding = 8;
-      const left = Math.min(
-        rect.right + 8,
-        window.innerWidth - tooltipWidth - viewportPadding
+      const gap = 8;
+      const rightSpace = window.innerWidth - rect.right - viewportPadding;
+      const leftSpace = rect.left - viewportPadding;
+      const placeRight = rightSpace >= tooltipWidth || rightSpace >= leftSpace;
+      const preferredLeft = placeRight ? rect.right + gap : rect.left - gap - tooltipWidth;
+      const left = Math.max(
+        viewportPadding,
+        Math.min(preferredLeft, window.innerWidth - tooltipWidth - viewportPadding)
       );
-      setTooltipPos({ left: Math.max(viewportPadding, left), top: rect.top });
+      const top = Math.max(
+        viewportPadding,
+        Math.min(rect.top, window.innerHeight - tooltipHeight - viewportPadding)
+      );
+      setTooltipPos({ left, top });
     }
 
     updateTooltipPos();

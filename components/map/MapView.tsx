@@ -57,7 +57,7 @@ function computeAreaSqKm(points: [number, number][]): number {
   return Math.abs((area * R * R) / 2);
 }
 
-const MAX_SELECTION_SIDE_KM = 2;
+const MAX_SELECTION_SIDE_KM = 1;
 
 function computeSelectionSizeKm(points: [number, number][]): { widthKm: number; heightKm: number } {
   if (points.length < 2) return { widthKm: 0, heightKm: 0 };
@@ -368,7 +368,7 @@ function MapView({ onAreaSelected }: { onAreaSelected: (area: SelectedArea) => v
           const dx = first.x - clicked.x, dy = first.y - clicked.y;
           if (Math.sqrt(dx * dx + dy * dy) < 12) {
             if (closingWouldSelfIntersect(points)) { flashInvalid("Nelze uzavřít, tvar by se protínal"); return; }
-            if (exceedsSelectionLimit(points)) { flashInvalid("Maximální velikost označení je 2 km × 2 km"); return; }
+            if (exceedsSelectionLimit(points)) { flashInvalid("Maximální velikost označení je 1 km × 1 km"); return; }
             closePolygonFn(L, map);
             return;
           }
