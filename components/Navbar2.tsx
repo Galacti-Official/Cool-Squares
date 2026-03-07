@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import Image from "next/image";
+import logo from "@/public/logo.svg";
 
 const links = [
   { href: "/#features", label: "Řešení" },
@@ -29,36 +31,12 @@ export default function Navbar() {
   }, []);
 
   return (
-    <nav className="sticky top-0 z-50 transition-colors backdrop-blur-md border-b border-btn/30">     
-    <div className="max-w-5xl mx-auto px-6 h-16 flex items-center justify-between">
-        {/* Logo */}
-        <a href="/#" className={`flex items-center gap-2 font-display text-xl text-text ${scrolled ? "text-black" : "text-text"}`}>
-          CoolSquares
-        </a>
-
-        {/* Desktop links */}
-        <ul className="hidden md:flex items-center gap-1 list-none">
-          {links.map((l) => (
-            <li key={l.href}>
-              <a
-                href={l.href}
-                className="px-4 py-1.5 rounded-full text-sm text-text-mid hover:bg-fg hover:text-text transition-colors"
-              >
-                {l.label}
-              </a>
-            </li>
-          ))}
-        </ul>
-
-        {/* CTA buttons */}
-        <div className="hidden md:flex items-center gap-2">
-          <Link
-            href="/map"
-            className="px-5 py-2 rounded-full text-sm font-medium shadow-[0_4px_14px_rgba(172,193,138,0.45)] transition-all hover:-translate-y-0.5 active:translate-y-0"
-          >
-            idk 
-          </Link>
-        </div>
+    <nav className="sticky top-0 z-50 transition-colors backdrop-blur-md border-b border-btn/30">
+      <div className="w-full px-4 md:px-8 h-16 grid grid-cols-[1fr_auto_1fr] items-center">     
+        <Link href="/#" className={`flex items-center gap-2 font-display text-xl text-text font-bold ${scrolled ? "text-black" : "text-text"}`}>
+          <Image src={"/logo.svg"} alt="Logo" width={28} height={28} />
+          CoolSquares Mapa
+        </Link>
       </div>
     </nav>
   );
