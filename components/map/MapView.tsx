@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import ParcelEditor from "./ParcelEditor";
 import { formatAreaByMagnitude, formatDistanceByMagnitude } from "./areaFormat";
 import ClimateMap from "./ClimateMap";
+import Image from "next/image";
 
 type Mode = "idle" | "drawing";
 type AppPage = "map" | "results" | "editor";
@@ -526,7 +527,9 @@ function MapView({ onAreaSelected }: { onAreaSelected: (area: SelectedArea) => v
       {!mapReady && (
         <div className="absolute inset-0 bg-bg flex items-center justify-center z-[2000]">
           <div className="text-center">
-            <div className="text-5xl mb-4 animate-bounce">🌿</div>
+            <div className="flex items-center justify-center text-5xl mb-4 animate-bounce">
+              <Image src="/logo.svg" alt="Logo" width={48} height={48} />
+            </div>
             <p className="font-display text-2xl text-text">Načítání mapy…</p>
           </div>
         </div>
