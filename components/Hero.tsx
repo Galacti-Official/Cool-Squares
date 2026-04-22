@@ -29,19 +29,19 @@ export default function Hero() {
   }, []);
 
   return (
-    <section className="relative py-28 overflow-hidden snap-start">
-      <div className="relative z-10 max-w-6xl mx-auto px-6 flex items-center justify-between gap-10">
-        <div className="max-w-xl">
-          <h1 className="font-display text-5xl md:text-[4.2rem] leading-[1.1] text-text mb-5">
+    <section className="relative py-16 md:py-28 overflow-hidden snap-start">
+      <div className="relative z-10 max-w-6xl mx-auto px-6 flex flex-col lg:flex-row items-center justify-between gap-10">
+        <div className="max-w-xl text-center lg:text-left">
+          <h1 className="font-display text-4xl sm:text-5xl md:text-[4.2rem] leading-[1.1] text-text mb-5">
             Moderní řešení pro problémy {" "}
             <em className="italic text-text-light">moderního města</em>
           </h1>
 
-          <p className="text-text-mid text-lg max-w-md mb-10 leading-relaxed">
+          <p className="text-text-mid text-lg max-w-md mb-10 leading-relaxed mx-auto lg:mx-0">
             Neboli naše řešení tepelných ostrovů
           </p>
 
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-wrap gap-3 justify-center lg:justify-start">
             <a href="/map" className="inline-flex items-center gap-2 px-6 py-3 rounded-full font-medium bg-btn text-text shadow-[0_4px_14px_rgba(172,193,138,0.45)] hover:bg-btn-dark hover:-translate-y-0.5 active:translate-y-0 transition-all">
               Vyzkoušet →
             </a>

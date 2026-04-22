@@ -691,6 +691,15 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
   const [barExpanded, setBarExpanded] = useState(false);
   const [satTilesVersion, setSatTilesVersion] = useState(0);
   const [satImageStatus, setSatImageStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [tooSmall, setTooSmall] = useState(
+    () => typeof window !== "undefined" && window.innerWidth < 960
+  );
+
+  useEffect(() => {
+    const check = () => setTooSmall(window.innerWidth < 960);
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   const elementsRef = useRef(elements);
   const selectedIdsRef = useRef(selectedIds);
@@ -1340,6 +1349,21 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
   const planStats: PlanStats | null = elements.length === 0 ? null
     : computePlanStats(elements, parcelAreaSqM, pixelsPerMetreRef.current);
 
+
+  if (tooSmall) {
+    return (
+      <div style={{ position: "fixed", inset: 0, zIndex: 4000, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#F4F5E0", fontFamily: "'PT Sans', sans-serif", padding: 32, textAlign: "center" }}>
+        <div style={{ fontSize: 40, marginBottom: 20, opacity: 0.4 }}>🖥</div>
+        <h2 style={{ fontSize: 22, fontWeight: 400, color: "#2e3a1f", fontStyle: "italic", marginBottom: 10, lineHeight: 1.3 }}>Editor vyžaduje větší obrazovku</h2>
+        <p style={{ fontSize: 13, color: "#2e3a1f77", maxWidth: 320, lineHeight: 1.6, marginBottom: 28 }}>
+          Plánovač parcely je dostupný pouze na zařízeních se šířkou obrazovky alespoň 960 px. Otevřete jej na počítači nebo tabletu v režimu na šířku.
+        </p>
+        <button onClick={onBack} style={{ padding: "10px 24px", background: "#2e3a1f", color: "#F4F5E0", border: "none", borderRadius: 999, fontSize: 13, fontFamily: "inherit", cursor: "pointer", letterSpacing: "0.04em" }}>
+          ← Zpět na výsledky
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 4000, display: "flex", flexDirection: "column", background: "#F4F5E0" }}>
