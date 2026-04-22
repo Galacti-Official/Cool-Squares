@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
 import EncyclopediaView from "@/components/encyclopedia/EncyclopediaView";
@@ -13,7 +14,9 @@ export default function EncyclopediaPage() {
     <>
       <Navbar />
       <main>
-        <EncyclopediaView />
+        <Suspense>
+          <EncyclopediaView />
+        </Suspense>
       </main>
       <Footer />
     </>
