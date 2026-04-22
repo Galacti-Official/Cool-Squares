@@ -151,32 +151,47 @@ function ResultsPage({
         fontFamily: "'PT Sans', sans-serif",
       }}
     >
-      <header style={{ borderBottom: "1.5px solid #2e3a1f22", background: "#F4F5E0", display: "flex", alignItems: "center", height: 56, flexShrink: 0 }}>
-        <button onClick={onBack} style={{ display: "flex", alignItems: "center", gap: 8, padding: "0 20px", height: "100%", borderRight: "1.5px solid #2e3a1f22", background: "none", border: "none", cursor: "pointer", color: "#2e3a1f", fontSize: 13, fontFamily: "inherit", letterSpacing: "0.04em" }}>
+      {/* Header */}
+      <header className="flex items-center flex-shrink-0" style={{ borderBottom: "1.5px solid #2e3a1f22", background: "#F4F5E0", height: 56 }}>
+        <button onClick={onBack} className="flex items-center gap-2 h-full px-4 sm:px-5 shrink-0" style={{ background: "none", border: "none", borderRight: "1.5px solid #2e3a1f22", cursor: "pointer", color: "#2e3a1f", fontSize: 13, fontFamily: "inherit", letterSpacing: "0.04em" }}>
           <span style={{ fontSize: 17, lineHeight: 1 }}>←</span>
-          <span>Zpět na mapu</span>
+          <span className="hidden sm:inline">Zpět na mapu</span>
         </button>
-        <div style={{ flex: 1, padding: "0 24px", display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ fontSize: 11, letterSpacing: "0.12em", color: "#2e3a1f88", textTransform: "uppercase" }}>Vybraná oblast</span>
-          <span style={{ color: "#2e3a1f44", fontSize: 11 }}>·</span>
-          <span style={{ fontSize: 13, color: "#2e3a1f", fontStyle: "italic" }}>{formatAreaByMagnitude(areaSqKm)}</span>
-          <span style={{ color: "#2e3a1f44", fontSize: 11 }}>·</span>
-          <span style={{ fontSize: 13, color: "#2e3a1f99" }}>{points.length} vrcholů</span>
+        <div className="flex-1 px-3 sm:px-6 flex items-center gap-2 overflow-hidden min-w-0">
+          <span className="hidden sm:inline" style={{ fontSize: 11, letterSpacing: "0.12em", color: "#2e3a1f88", textTransform: "uppercase", whiteSpace: "nowrap" }}>Vybraná oblast</span>
+          <span className="hidden sm:inline" style={{ color: "#2e3a1f44", fontSize: 11 }}>·</span>
+          <span className="truncate" style={{ fontSize: 13, color: "#2e3a1f", fontStyle: "italic" }}>{formatAreaByMagnitude(areaSqKm)}</span>
+          <span className="hidden sm:inline" style={{ color: "#2e3a1f44", fontSize: 11 }}>·</span>
+          <span className="hidden sm:inline" style={{ fontSize: 13, color: "#2e3a1f99", whiteSpace: "nowrap" }}>{points.length} vrcholů</span>
         </div>
-        <div style={{ display: "flex", alignItems: "center", height: "100%", borderLeft: "1.5px solid #2e3a1f22" }}>
+        <div className="flex items-center h-full shrink-0" style={{ borderLeft: "1.5px solid #2e3a1f22" }}>
           {["Sdílet", "Uložit"].map((label) => (
-            <button key={label} style={{ padding: "0 20px", height: "100%", background: "none", border: "none", borderRight: "1.5px solid #2e3a1f22", cursor: "pointer", color: "#2e3a1f99", fontSize: 13, fontFamily: "inherit", letterSpacing: "0.04em" }} onClick={() => alert("Není ještě implementováno")}>
+            <button key={label} className="hidden sm:block h-full px-4 sm:px-5" style={{ background: "none", border: "none", borderRight: "1.5px solid #2e3a1f22", cursor: "pointer", color: "#2e3a1f99", fontSize: 13, fontFamily: "inherit", letterSpacing: "0.04em" }} onClick={() => alert("Není ještě implementováno")}>
               {label}
             </button>
           ))}
-          <button onClick={onOpenEditor} style={{ padding: "0 20px", height: "100%", background: "#2e3a1f", border: "none", cursor: "pointer", color: "#F4F5E0", fontSize: 13, fontFamily: "inherit", letterSpacing: "0.04em" }}>
-            Otevřít v plánovači →
+          <button onClick={onOpenEditor} className="h-full px-4 sm:px-5 whitespace-nowrap" style={{ background: "#2e3a1f", border: "none", cursor: "pointer", color: "#F4F5E0", fontSize: 13, fontFamily: "inherit", letterSpacing: "0.04em" }}>
+            <span className="hidden sm:inline">Otevřít v plánovači →</span>
+            <span className="sm:hidden">Plánovač →</span>
           </button>
         </div>
       </header>
 
-      <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
-        <nav style={{ width: 180, flexShrink: 0, borderRight: "1.5px solid #2e3a1f22", display: "flex", flexDirection: "column", padding: "24px 0" }}>
+      <div className="flex flex-col sm:flex-row flex-1 overflow-hidden">
+        {/* Mobile: horizontal tab bar */}
+        <nav className="sm:hidden flex flex-shrink-0" style={{ borderBottom: "1.5px solid #2e3a1f22", background: "#F4F5E0" }}>
+          {NAV_ITEMS.map((item) => (
+            <button key={item.id} onClick={() => setActiveTab(item.id)}
+              className="flex-1 flex items-center justify-center gap-2 py-3"
+              style={{ background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", fontSize: 13, letterSpacing: "0.04em", color: activeTab === item.id ? "#2e3a1f" : "#2e3a1f66", borderBottom: activeTab === item.id ? "2.5px solid #2e3a1f" : "2.5px solid transparent", transition: "all 0.15s ease" }}>
+              <span style={{ fontSize: 15, opacity: activeTab === item.id ? 1 : 0.5 }}>{item.icon}</span>
+              {item.label}
+            </button>
+          ))}
+        </nav>
+
+        {/* Desktop: vertical sidebar */}
+        <nav className="hidden sm:flex flex-col flex-shrink-0" style={{ width: 180, borderRight: "1.5px solid #2e3a1f22", padding: "24px 0" }}>
           {NAV_ITEMS.map((item) => (
             <button key={item.id} onClick={() => setActiveTab(item.id)}
               style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 24px", background: "none", border: "none", cursor: "pointer", textAlign: "left", fontFamily: "inherit", fontSize: 13, letterSpacing: "0.04em", color: activeTab === item.id ? "#2e3a1f" : "#2e3a1f66", borderLeft: activeTab === item.id ? "2.5px solid #2e3a1f" : "2.5px solid transparent", transition: "all 0.15s ease" }}>
@@ -186,18 +201,18 @@ function ResultsPage({
           ))}
         </nav>
 
-        <main style={{ flex: 1, overflow: "auto", padding: "32px 40px" }}>
+        <main className="flex-1 overflow-auto p-4 sm:p-8 md:px-10">
           {activeTab === "overview" && (
             <div style={{ maxWidth: 820 }}>
               <h1 style={{ fontSize: 28, fontWeight: 400, color: "#2e3a1f", marginBottom: 6, lineHeight: 1.2, fontStyle: "italic" }}>Vlastní oblast</h1>
-              <p style={{ fontSize: 13, color: "#2e3a1f77", marginBottom: 36, letterSpacing: "0.04em" }}>
+              <p style={{ fontSize: 13, color: "#2e3a1f77", marginBottom: 24, letterSpacing: "0.04em" }}>
                 Nakresleno v České republice · {new Date().toLocaleDateString("cs-CZ", { day: "numeric", month: "long", year: "numeric" })}
               </p>
-              <div style={{ display: "flex", gap: 24, marginBottom: 32 }}>
-                <div style={{ width: 320, height: 220, flexShrink: 0, border: "1.5px solid #2e3a1f22", borderRadius: 4, overflow: "hidden" }}>
+              <div className="flex flex-col sm:flex-row gap-4 sm:gap-6 mb-8">
+                <div className="w-full sm:w-[280px] lg:w-[320px] h-[180px] sm:h-[220px] flex-shrink-0" style={{ border: "1.5px solid #2e3a1f22", borderRadius: 4, overflow: "hidden" }}>
                   <MiniMap area={area} />
                 </div>
-                <div style={{ flex: 1, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1, background: "#2e3a1f18", border: "1.5px solid #2e3a1f22", borderRadius: 4, overflow: "hidden" }}>
+                <div className="flex-1" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1, background: "#2e3a1f18", border: "1.5px solid #2e3a1f22", borderRadius: 4, overflow: "hidden" }}>
                   {[
                     { label: "Celková plocha", value: formatAreaByMagnitude(areaSqKm) },
                     { label: "Vrcholy",         value: points.length },
@@ -206,9 +221,9 @@ function ResultsPage({
                     { label: "Střed. šířka",    value: `${centerLat}° N` },
                     { label: "Střed. délka",    value: `${centerLng}° E` },
                   ].map(({ label, value }) => (
-                    <div key={label} style={{ background: "#F4F5E0", padding: "16px 20px" }}>
-                      <div style={{ fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "#2e3a1f66", marginBottom: 6 }}>{label}</div>
-                      <div style={{ fontSize: 20, color: "#2e3a1f", fontStyle: "italic" }}>{value}</div>
+                    <div key={label} style={{ background: "#F4F5E0", padding: "12px 16px" }}>
+                      <div style={{ fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "#2e3a1f66", marginBottom: 4 }}>{label}</div>
+                      <div style={{ fontSize: 18, color: "#2e3a1f", fontStyle: "italic" }}>{value}</div>
                     </div>
                   ))}
                 </div>

@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { PT_Sans } from 'next/font/google';
 
@@ -6,6 +6,12 @@ const ptSans = PT_Sans({
   subsets: ['latin'],
   weight: ['400','700'],
 });
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+};
 
 export const metadata: Metadata = {
 	title: "CoolSquares",
