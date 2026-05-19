@@ -5,7 +5,7 @@ const steps = [
   },
   {
     title: "Růst",
-    desc: "Po sestavení a zasazení Psího vína, začne rostlina obrůstat rám stěny a vytvářet hustou pokrývku.",
+    desc: "Po sestavení a zasazení břečťanu popínavého, začne rostlina obrůstat rám stěny a vytvářet hustou pokrývku.",
   },
   {
     title: "Výsledek",

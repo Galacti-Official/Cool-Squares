@@ -5,7 +5,7 @@ const features = [
   {
     icon: "/leaf.svg",
     title: "Rostlinná stěna",
-    desc: "Živá stěna tvořena psím vínem, která zlepšuje mikroklima a estetiku svého prostředí",
+    desc: "Živá stěna tvořena břečťanem popínavým, která zlepšuje mikroklima a estetiku svého prostředí",
     href: "/features?open=rostlinna-stena",
   },
   {
