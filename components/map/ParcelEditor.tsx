@@ -16,6 +16,16 @@ export interface SelectedArea {
   areaSqKm: number;
 }
 
+export interface GeoElement {
+  t: string;
+  lat: number;
+  lng: number;
+  wM: number;
+  hM: number;
+  rot: number;
+  note?: string;
+}
+
 interface SatelliteTile {
   z: number;
   x: number;
@@ -285,7 +295,7 @@ function drawShape(
     ctx.fill(); ctx.stroke();
   } else {
     ctx.beginPath();
-    (ctx as any).roundRect(-hw, -hh, w, h, 3);
+    (ctx as any).roundRect(-hw, -hh, w, h, Math.min(3, hw * 0.25, hh * 0.25));
     ctx.fill(); ctx.stroke();
     ctx.strokeStyle = color + "44"; ctx.lineWidth = 1;
     const step = Math.max(15, Math.min(hw, hh) * 0.4);
@@ -298,10 +308,19 @@ function drawShape(
   if (showLabel) {
     ctx.shadowBlur = 0;
     ctx.fillStyle = "#2e3a1fcc";
-    ctx.font = `${Math.max(9, Math.min(11, w / 10))}px sans-serif`;
+    const fontSize = Math.max(5, Math.min(7, w / 10));
+    ctx.font = `${fontSize}px sans-serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillText(item.label.length > 12 ? item.label.slice(0, 11) + "…" : item.label, 0, 0);
+    const maxW = Math.max(w - 4, fontSize * 3);
+    let label = item.label;
+    if (ctx.measureText(label).width > maxW) {
+      while (label.length > 1 && ctx.measureText(label + "…").width > maxW) {
+        label = label.slice(0, -1);
+      }
+      label += "…";
+    }
+    ctx.fillText(label, 0, 0);
   }
 
   if (selected) {
@@ -520,10 +539,11 @@ function CatalogItem({ item, onDragStart }: { item: any; onDragStart: (e: React.
 }
 
 
-function PropertiesPanel({ item, selectedCount, onChange, onDelete }: {
+function PropertiesPanel({ item, selectedCount, onChange, onCommit, onDelete }: {
   item: PlacedElement | null;
   selectedCount: number;
   onChange: (item: PlacedElement) => void;
+  onCommit: (item: PlacedElement) => void;
   onDelete: () => void;
 }) {
   if (!item) return (
@@ -559,6 +579,7 @@ function PropertiesPanel({ item, selectedCount, onChange, onDelete }: {
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <input type="range" min={0} max={360} value={item.rotation || 0}
             onChange={e => onChange({ ...item, rotation: Number(e.target.value) })}
+            onMouseUp={e => onCommit({ ...item, rotation: Number((e.target as HTMLInputElement).value) })}
             style={{ flex: 1, accentColor: "#2e3a1f" }} />
           <span style={{ fontSize: 11, color: "#2e3a1f", width: 32, textAlign: "right" }}>{item.rotation || 0}°</span>
         </div>
@@ -566,6 +587,7 @@ function PropertiesPanel({ item, selectedCount, onChange, onDelete }: {
       <div style={{ marginBottom: 10 }}>
         <div style={{ fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "#2e3a1f77", marginBottom: 4 }}>Poznámka</div>
         <textarea value={item.note || ""} onChange={e => onChange({ ...item, note: e.target.value })}
+          onBlur={e => onCommit({ ...item, note: e.target.value })}
           placeholder="Přidat poznámku…" rows={2}
           style={{ width: "100%", resize: "none", background: "#2e3a1f08", border: "1.5px solid #2e3a1f22", borderRadius: 3, padding: "6px 8px", fontSize: 12, fontFamily: "inherit", color: "#2e3a1f", outline: "none", boxSizing: "border-box" }} />
       </div>
@@ -677,7 +699,7 @@ function PlanSummaryBar({ stats, expanded, onToggle, area }: {
 }
 
 
-export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onBack: () => void }) {
+export default function ParcelEditor({ area, onBack, initialPlan }: { area: SelectedArea; onBack: () => void; initialPlan?: GeoElement[] }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [elements, setElements] = useState<PlacedElement[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -704,7 +726,7 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
   const elementsRef = useRef(elements);
   const selectedIdsRef = useRef(selectedIds);
   const hoveredIdRef = useRef(hoveredId);
-  const canvasSize = useRef({ w: 800, h: 600 });
+  const canvasSize = useRef({ w: 0, h: 0 });
   const pixelsPerMetreRef = useRef(1);
   const draggingCatalogItem = useRef<any>(null);
   const satelliteTilesRef = useRef<SatelliteTile[]>([]);
@@ -721,6 +743,15 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
   } | null>(null);
   const marqueeState = useRef<{ startX: number; startY: number; additive: boolean } | null>(null);
   const spaceDown = useRef(false);
+
+  const historyRef = useRef<PlacedElement[][]>([[]]);
+  const historyIndexRef = useRef(0);
+  const pendingInteractiveRef = useRef<PlacedElement[] | null>(null);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+  const [shareToast, setShareToast] = useState(false);
+  const initialPlanRef = useRef<GeoElement[] | undefined>(initialPlan);
+  const initialPlanApplied = useRef(false);
 
   useEffect(() => { elementsRef.current = elements; }, [elements]);
   useEffect(() => { selectedIdsRef.current = selectedIds; }, [selectedIds]);
@@ -750,6 +781,7 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
     for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) {
       loads.push(new Promise(resolve => {
         const img = new Image();
+        img.crossOrigin = "anonymous";
         img.onload = () => resolve({ z: zoom, x, y, img });
         img.onerror = () => resolve(null);
         img.src = `https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${zoom}/${y}/${x}`;
@@ -1018,7 +1050,31 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
 
         canvas.width = width; canvas.height = height;
         canvasSize.current = { w: width, h: height };
-        if (!vpInitialised.current) { fitParcel(); vpInitialised.current = true; }
+        if (!vpInitialised.current) {
+          fitParcel();
+          vpInitialised.current = true;
+          if (initialPlanRef.current && !initialPlanApplied.current) {
+            initialPlanApplied.current = true;
+            const { project, pixelsPerMetre } = makeProjection(area.points, width, height, 80);
+            const restoredElements: PlacedElement[] = initialPlanRef.current.map(ge => {
+              const [px, py] = project([ge.lat, ge.lng]);
+              const wPx = Math.max(4, ge.wM * pixelsPerMetre);
+              const hPx = Math.max(4, ge.hM * pixelsPerMetre);
+              return {
+                id: genId(),
+                type: ge.t,
+                x: snapTo(px - wPx / 2),
+                y: snapTo(py - hPx / 2),
+                wPx,
+                hPx,
+                rotation: ge.rot,
+                ...(ge.note ? { note: ge.note } : {}),
+              };
+            });
+            setElements(restoredElements);
+            pushHistory(restoredElements);
+          }
+        }
       }
     });
     obs.observe(canvas.parentElement);
@@ -1043,7 +1099,6 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
         vp.current = { ...vp.current, zoom: newZoom, x: sx - (wx * newZoom * c - wy * newZoom * s), y: sy - (wx * newZoom * s + wy * newZoom * c) };
         setZoomDisplay(Math.round(newZoom * 100));
       } else {
-        // Two-finger scroll (touchpad) or scroll wheel → pan
         vp.current = { ...vp.current, x: vp.current.x - e.deltaX, y: vp.current.y - e.deltaY };
       }
     }
@@ -1054,18 +1109,29 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
 
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
+      const activeTag = (document.activeElement as HTMLElement)?.tagName;
+      const inTextField = activeTag === "TEXTAREA" || activeTag === "INPUT";
+
       if (e.code === "Space" && !spaceDown.current) {
         spaceDown.current = true;
         if (canvasRef.current) canvasRef.current.style.cursor = "grab";
       }
-      if ((e.key === "Delete" || e.key === "Backspace") &&
-        (document.activeElement as HTMLElement)?.tagName !== "TEXTAREA" &&
-        (document.activeElement as HTMLElement)?.tagName !== "INPUT") {
+      if ((e.key === "Delete" || e.key === "Backspace") && !inTextField) {
         if (selectedIdsRef.current.length > 0) {
           const s = new Set(selectedIdsRef.current);
-          setElements(prev => prev.filter(el => !s.has(el.id)));
+          const newElements = elementsRef.current.filter(el => !s.has(el.id));
+          setElements(newElements);
+          pushHistory(newElements);
           setSelectedIds([]);
         }
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === "z" && !e.shiftKey && !inTextField) {
+        e.preventDefault();
+        undo();
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === "y" || (e.key === "z" && e.shiftKey)) && !inTextField) {
+        e.preventDefault();
+        redo();
       }
       if (e.key === "Escape") setSelectedIds([]);
       if (e.key === "f" || e.key === "F") fitParcel();
@@ -1082,6 +1148,34 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
     window.addEventListener("keyup", onKeyUp);
     return () => { window.removeEventListener("keydown", onKeyDown); window.removeEventListener("keyup", onKeyUp); };
   }, []);
+
+  function pushHistory(newElements: PlacedElement[]) {
+    let newHistory = historyRef.current.slice(0, historyIndexRef.current + 1);
+    newHistory.push([...newElements]);
+    if (newHistory.length > 50) newHistory = newHistory.slice(-50);
+    historyRef.current = newHistory;
+    historyIndexRef.current = newHistory.length - 1;
+    setCanUndo(historyIndexRef.current > 0);
+    setCanRedo(false);
+  }
+
+  function undo() {
+    if (historyIndexRef.current <= 0) return;
+    historyIndexRef.current--;
+    setElements([...historyRef.current[historyIndexRef.current]]);
+    setSelectedIds([]);
+    setCanUndo(historyIndexRef.current > 0);
+    setCanRedo(historyIndexRef.current < historyRef.current.length - 1);
+  }
+
+  function redo() {
+    if (historyIndexRef.current >= historyRef.current.length - 1) return;
+    historyIndexRef.current++;
+    setElements([...historyRef.current[historyIndexRef.current]]);
+    setSelectedIds([]);
+    setCanUndo(historyIndexRef.current > 0);
+    setCanRedo(historyIndexRef.current < historyRef.current.length - 1);
+  }
 
   function rotateViewport(delta: number) {
     const { w, h } = canvasSize.current;
@@ -1224,7 +1318,10 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
       const el = elementsRef.current.find(i => i.id === id);
       if (!el) { stopRotateDrag(); return; }
       const [cx, cy] = worldToScreen(el.x + el.wPx / 2, el.y + el.hPx / 2);
-      setElements(prev => prev.map(i => i.id === id ? { ...i, rotation: normalizeDeg(pointerAngleDeg(cx, cy, sx, sy) - angleOffsetDeg) } : i));
+      const newRotation = normalizeDeg(pointerAngleDeg(cx, cy, sx, sy) - angleOffsetDeg);
+      const newEls = elementsRef.current.map(i => i.id === id ? { ...i, rotation: newRotation } : i);
+      pendingInteractiveRef.current = newEls;
+      setElements(newEls);
       if (!spaceDown.current) canvasRef.current!.style.cursor = "grabbing";
       return;
     }
@@ -1251,7 +1348,9 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
           if (rectsOverlap(nextRects[i], nextRects[j])) return;
         }
       }
-      setElements(prev => prev.map(el => { const n = nextById[el.id]; return n ? { ...el, ...n } : el; }));
+      const newEls = elementsRef.current.map(el => { const n = nextById[el.id]; return n ? { ...el, ...n } : el; });
+      pendingInteractiveRef.current = newEls;
+      setElements(newEls);
       return;
     }
 
@@ -1277,9 +1376,13 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
   }
 
   function onMouseUp(e: React.MouseEvent) {
-    stopRotateDrag();
     const [sx, sy] = getCanvasXY(e);
     if (panState.current) { panState.current = null; canvasRef.current!.style.cursor = spaceDown.current ? "grab" : "default"; }
+    if ((dragState.current || rotateDragRef.current) && pendingInteractiveRef.current) {
+      pushHistory(pendingInteractiveRef.current);
+      pendingInteractiveRef.current = null;
+    }
+    stopRotateDrag();
     dragState.current = null;
 
     if (marqueeState.current) {
@@ -1297,6 +1400,10 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
 
   useEffect(() => {
     function onWindowMouseUp() {
+      if ((dragState.current || rotateDragRef.current) && pendingInteractiveRef.current) {
+        pushHistory(pendingInteractiveRef.current);
+        pendingInteractiveRef.current = null;
+      }
       stopRotateDrag();
       if (panState.current) { panState.current = null; if (canvasRef.current) canvasRef.current.style.cursor = spaceDown.current ? "grab" : "default"; }
       dragState.current = null;
@@ -1327,7 +1434,9 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
     const wPx = baseW * scale, hPx = baseH * scale;
     const newEl: PlacedElement = { id: genId(), type: item.type, x: snapTo(wx - wPx / 2), y: snapTo(wy - hPx / 2), wPx, hPx, rotation: 0 };
     if (!canPlaceElementAt(newEl.x, newEl.y, newEl.wPx, newEl.hPx)) { draggingCatalogItem.current = null; return; }
-    setElements(prev => [...prev, newEl]);
+    const newElements = [...elementsRef.current, newEl];
+    setElements(newElements);
+    pushHistory(newElements);
     setSelectedIds([newEl.id]);
     draggingCatalogItem.current = null;
   }
@@ -1355,6 +1464,49 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
   const parcelAreaSqM = area.areaSqKm * 1_000_000;
   const planStats: PlanStats | null = elements.length === 0 ? null
     : computePlanStats(elements, parcelAreaSqM, pixelsPerMetreRef.current);
+
+  function exportPlan() {
+    const { w, h } = canvasSize.current;
+    if (!w || !h) return;
+
+    const { unproject, pixelsPerMetre } = makeProjection(area.points, w, h, 80);
+
+    const geoElements: GeoElement[] = elements.map(el => {
+      const [lat, lng] = unproject([el.x + el.wPx / 2, el.y + el.hPx / 2]);
+      return {
+        t: el.type,
+        lat: +lat.toFixed(7),
+        lng: +lng.toFixed(7),
+        wM: +(el.wPx / pixelsPerMetre).toFixed(3),
+        hM: +(el.hPx / pixelsPerMetre).toFixed(3),
+        rot: el.rotation || 0,
+        ...(el.note ? { note: el.note } : {}),
+      };
+    });
+
+    const payload = {
+      v: 1,
+      area: {
+        points: area.points.map(([lat, lng]) => [+lat.toFixed(7), +lng.toFixed(7)]),
+        bounds: {
+          north: +area.bounds.north.toFixed(7),
+          south: +area.bounds.south.toFixed(7),
+          east: +area.bounds.east.toFixed(7),
+          west: +area.bounds.west.toFixed(7),
+        },
+        areaSqKm: +area.areaSqKm.toFixed(8),
+      },
+      elements: geoElements,
+    };
+
+    const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+    const shareUrl = `${window.location.origin}${window.location.pathname}#plan=${b64}`;
+
+    navigator.clipboard.writeText(shareUrl).then(() => {
+      setShareToast(true);
+      setTimeout(() => setShareToast(false), 3000);
+    });
+  }
 
 
   if (tooSmall) {
@@ -1393,6 +1545,13 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
         </div>
 
         <div style={{ display: "flex", alignItems: "center", height: "100%", borderLeft: "1.5px solid #2e3a1f22", borderRight: "1.5px solid #2e3a1f22" }}>
+          <button title="Zpět (Ctrl+Z)" onClick={undo} disabled={!canUndo}
+            style={{ height: "100%", padding: "0 12px", background: "none", border: "none", cursor: canUndo ? "pointer" : "default", color: canUndo ? "#2e3a1f88" : "#2e3a1f28", fontSize: 15, fontFamily: "inherit" }}>↩</button>
+          <button title="Znovu (Ctrl+Shift+Z)" onClick={redo} disabled={!canRedo}
+            style={{ height: "100%", padding: "0 12px", background: "none", border: "none", cursor: canRedo ? "pointer" : "default", color: canRedo ? "#2e3a1f88" : "#2e3a1f28", fontSize: 15, fontFamily: "inherit" }}>↪</button>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", height: "100%", borderRight: "1.5px solid #2e3a1f22" }}>
           <button title="Otočit pohled o −15° ( [ )" onClick={() => rotateViewport(-15 * Math.PI / 180)}
             style={{ height: "100%", padding: "0 12px", background: "none", border: "none", cursor: "pointer", color: "#2e3a1f88", fontSize: 14, fontFamily: "inherit" }}>↺</button>
           <button title="Přizpůsobit parcelu na obrazovku ( F )" onClick={fitParcel}
@@ -1413,11 +1572,11 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
         </div>
 
         <div style={{ display: "flex", alignItems: "center", height: "100%" }}>
-          <button onClick={() => { setElements([]); setSelectedIds([]); }}
+          <button onClick={() => { setElements([]); setSelectedIds([]); pushHistory([]); }}
             style={{ height: "100%", padding: "0 16px", background: "none", border: "none", borderRight: "1.5px solid #2e3a1f22", cursor: "pointer", color: "#2e3a1f77", fontSize: 12, fontFamily: "inherit", letterSpacing: "0.04em" }}>
             Vymazat vše
           </button>
-          <button style={{ height: "100%", padding: "0 20px", background: "none", border: "none", cursor: "pointer", color: "#2e3a1f", fontSize: 12, fontFamily: "inherit", letterSpacing: "0.04em" }}>
+          <button onClick={exportPlan} style={{ height: "100%", padding: "0 20px", background: "none", border: "none", cursor: "pointer", color: "#2e3a1f", fontSize: 12, fontFamily: "inherit", letterSpacing: "0.04em" }}>
             Exportovat plán
           </button>
         </div>
@@ -1456,7 +1615,7 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
             )}
           </div>
           <div style={{ padding: "10px 12px", borderTop: "1.5px solid #2e3a1f11", fontSize: 10, color: "#2e3a1f44", lineHeight: 1.6 }}>
-            Přetáhněte pro umístění · Shift+klik pro vícenásobný výběr · Tažením v prázdném prostoru vyberete oblast · Dvěma prsty posunete / kolečkem posunete · Ctrl+kolečko nebo pinch pro přiblížení · Mezerník+tažení pro posun · [ ] pro otočení pohledu
+            Přetáhněte pro umístění · Shift+klik pro vícenásobný výběr · Tažením v prázdném prostoru vyberete oblast · Dvěma prsty posunete / kolečkem posunete · Ctrl+kolečko nebo pinch pro přiblížení · Mezerník+tažení pro posun · [ ] pro otočení pohledu · Ctrl+Z / Ctrl+Shift+Z pro zpět/znovu
           </div>
         </aside>
 
@@ -1498,13 +1657,29 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
             item={selectedElement}
             selectedCount={selectedIds.length}
             onChange={updated => setElements(prev => prev.map(el => el.id === updated.id ? updated : el))}
-            onDelete={() => { const s = new Set(selectedIds); setElements(prev => prev.filter(el => !s.has(el.id))); setSelectedIds([]); }}
+            onCommit={updated => {
+              const newElements = elementsRef.current.map(el => el.id === updated.id ? updated : el);
+              pushHistory(newElements);
+            }}
+            onDelete={() => {
+              const s = new Set(selectedIds);
+              const newElements = elementsRef.current.filter(el => !s.has(el.id));
+              setElements(newElements);
+              pushHistory(newElements);
+              setSelectedIds([]);
+            }}
           />
           {selectedIds.length > 1 && (
             <div style={{ padding: "12px 16px", borderTop: "1.5px solid #2e3a1f11", color: "#2e3a1f77", fontSize: 11, lineHeight: 1.5 }}>
               Vybráno prvků: {selectedIds.length}
               <button
-                onClick={() => { const s = new Set(selectedIds); setElements(prev => prev.filter(el => !s.has(el.id))); setSelectedIds([]); }}
+                onClick={() => {
+                  const s = new Set(selectedIds);
+                  const newElements = elementsRef.current.filter(el => !s.has(el.id));
+                  setElements(newElements);
+                  pushHistory(newElements);
+                  setSelectedIds([]);
+                }}
                 style={{ width: "100%", marginTop: 8, padding: "8px", background: "none", border: "1.5px solid #cc444422", borderRadius: 3, color: "#cc4444", fontSize: 12, cursor: "pointer", fontFamily: "inherit", letterSpacing: "0.04em" }}>
                 Odebrat vybrané
               </button>
@@ -1541,6 +1716,18 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
         onToggle={() => setBarExpanded(v => !v)}
         area={area}
       />
+
+      {shareToast && (
+        <div style={{
+          position: "fixed", bottom: 80, left: "50%", transform: "translateX(-50%)",
+          background: "#2e3a1f", color: "#F4F5E0", padding: "10px 22px",
+          borderRadius: 999, fontSize: 12, fontFamily: "inherit", letterSpacing: "0.04em",
+          zIndex: 9999, pointerEvents: "none",
+          animation: "fadeInUp 0.2s ease",
+        }}>
+          Odkaz zkopírován do schránky
+        </div>
+      )}
     </div>
   );
 }
