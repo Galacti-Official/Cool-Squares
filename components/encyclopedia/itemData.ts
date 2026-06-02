@@ -31,6 +31,7 @@ export interface Item {
   weight: string;
   dimensions: string;
   modelPath?: string;
+  topDownImagePath?: string;
   dimensionsM?: ItemDimensions;
   waterNeeded: boolean;
   tags: string[];
@@ -49,6 +50,8 @@ const rostlinnaStenaDimensions: ItemDimensions = {
 };
 const rostlinnaBranaModelPath = encodeURI("/Rostliná brána.stl");
 const rostlinnaStenaModelPath = encodeURI("/Rostliná stěna.stl");
+const rostlinnaBranaTopImagePath = encodeURI("/Rostliná brána-top.png");
+const rostlinnaStenaTopImagePath = encodeURI("/Rostliná stěna-top.png");
 
 export const ITEMS: Item[] = [
   {
@@ -67,6 +70,7 @@ export const ITEMS: Item[] = [
     weight: "5 000 kg (s půdou a plně zavlažené)",
     dimensions: formatDimensions(rostlinnaBranaDimensions),
     modelPath: rostlinnaBranaModelPath,
+    topDownImagePath: rostlinnaBranaTopImagePath,
     dimensionsM: rostlinnaBranaDimensions,
     waterNeeded: true,
     tags: ["modulární", "brána", "venkovní"],
@@ -90,6 +94,7 @@ export const ITEMS: Item[] = [
     weight: "2 500 kg (s půdou a plně zavlažené)",
     dimensions: formatDimensions(rostlinnaStenaDimensions),
     modelPath: rostlinnaStenaModelPath,
+    topDownImagePath: rostlinnaStenaTopImagePath,
     dimensionsM: rostlinnaStenaDimensions,
     waterNeeded: true,
     tags: ["modulární", "stěna", "venkovní"],

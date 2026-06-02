@@ -272,63 +272,93 @@ function drawShape(
   ctx: CanvasRenderingContext2D,
   item: any,
   x: number, y: number, w: number, h: number,
-  selected: boolean, hovered: boolean
+  selected: boolean, hovered: boolean,
+  topDownImage?: HTMLImageElement
 ) {
   const { shape, color } = item;
   ctx.save();
   ctx.translate(x + w / 2, y + h / 2);
   ctx.rotate(((item.rotation || 0) * Math.PI) / 180);
   const hw = w / 2, hh = h / 2;
+  const radius = Math.min(3, hw * 0.25, hh * 0.25);
 
-  if (selected || hovered) {
-    ctx.shadowColor = selected ? "#2e3a1f88" : "#2e3a1f33";
-    ctx.shadowBlur = selected ? 12 : 6;
-  }
-
-  ctx.fillStyle = color + (selected ? "ee" : "bb");
-  ctx.strokeStyle = selected ? "#2e3a1f" : "#2e3a1f66";
-  ctx.lineWidth = selected ? 2 : 1;
-
-  if (shape === "circle") {
-    ctx.beginPath();
-    ctx.ellipse(0, 0, hw, hh, 0, 0, Math.PI * 2);
-    ctx.fill(); ctx.stroke();
-    ctx.strokeStyle = color + "44"; ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.ellipse(0, 0, hw * 0.65, hh * 0.65, 0, 0, Math.PI * 2);
-    ctx.stroke();
-  } else if (shape === "ellipse") {
-    ctx.beginPath();
-    ctx.ellipse(0, 0, hw, hh, 0, 0, Math.PI * 2);
-    ctx.fill(); ctx.stroke();
-  } else {
-    ctx.beginPath();
-    (ctx as any).roundRect(-hw, -hh, w, h, Math.min(3, hw * 0.25, hh * 0.25));
-    ctx.fill(); ctx.stroke();
-    ctx.strokeStyle = color + "44"; ctx.lineWidth = 1;
-    const step = Math.max(15, Math.min(hw, hh) * 0.4);
-    for (let ox = -hw + step; ox < hw; ox += step) {
-      ctx.beginPath(); ctx.moveTo(ox, -hh + 4); ctx.lineTo(ox, hh - 4); ctx.stroke();
+  if (topDownImage && shape !== "circle" && shape !== "ellipse") {
+    // Shadow/glow via opaque fill drawn first
+    if (selected || hovered) {
+      ctx.shadowColor = selected ? "#2e3a1f88" : "#2e3a1f33";
+      ctx.shadowBlur = selected ? 12 : 6;
     }
-  }
-
-  const showLabel = !selected && !hovered;
-  if (showLabel) {
+    ctx.fillStyle = "#cccccc";
+    ctx.beginPath();
+    (ctx as any).roundRect(-hw, -hh, w, h, radius);
+    ctx.fill();
     ctx.shadowBlur = 0;
-    ctx.fillStyle = "#2e3a1fcc";
-    const fontSize = Math.max(5, Math.min(7, w / 10));
-    ctx.font = `${fontSize}px sans-serif`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    const maxW = Math.max(w - 4, fontSize * 3);
-    let label = item.label;
-    if (ctx.measureText(label).width > maxW) {
-      while (label.length > 1 && ctx.measureText(label + "…").width > maxW) {
-        label = label.slice(0, -1);
-      }
-      label += "…";
+
+    // Draw image clipped to rounded rect
+    ctx.save();
+    ctx.beginPath();
+    (ctx as any).roundRect(-hw, -hh, w, h, radius);
+    ctx.clip();
+    ctx.drawImage(topDownImage, -hw, -hh, w, h);
+    ctx.restore();
+
+    // Border
+    ctx.strokeStyle = selected ? "#2e3a1f" : "#2e3a1f66";
+    ctx.lineWidth = selected ? 2 : 1;
+    ctx.beginPath();
+    (ctx as any).roundRect(-hw, -hh, w, h, radius);
+    ctx.stroke();
+  } else {
+    if (selected || hovered) {
+      ctx.shadowColor = selected ? "#2e3a1f88" : "#2e3a1f33";
+      ctx.shadowBlur = selected ? 12 : 6;
     }
-    ctx.fillText(label, 0, 0);
+
+    ctx.fillStyle = color + (selected ? "ee" : "bb");
+    ctx.strokeStyle = selected ? "#2e3a1f" : "#2e3a1f66";
+    ctx.lineWidth = selected ? 2 : 1;
+
+    if (shape === "circle") {
+      ctx.beginPath();
+      ctx.ellipse(0, 0, hw, hh, 0, 0, Math.PI * 2);
+      ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = color + "44"; ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, hw * 0.65, hh * 0.65, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    } else if (shape === "ellipse") {
+      ctx.beginPath();
+      ctx.ellipse(0, 0, hw, hh, 0, 0, Math.PI * 2);
+      ctx.fill(); ctx.stroke();
+    } else {
+      ctx.beginPath();
+      (ctx as any).roundRect(-hw, -hh, w, h, radius);
+      ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = color + "44"; ctx.lineWidth = 1;
+      const step = Math.max(15, Math.min(hw, hh) * 0.4);
+      for (let ox = -hw + step; ox < hw; ox += step) {
+        ctx.beginPath(); ctx.moveTo(ox, -hh + 4); ctx.lineTo(ox, hh - 4); ctx.stroke();
+      }
+    }
+
+    const showLabel = !selected && !hovered;
+    if (showLabel) {
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = "#2e3a1fcc";
+      const fontSize = Math.max(5, Math.min(7, w / 10));
+      ctx.font = `${fontSize}px sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      const maxW = Math.max(w - 4, fontSize * 3);
+      let label = item.label;
+      if (ctx.measureText(label).width > maxW) {
+        while (label.length > 1 && ctx.measureText(label + "…").width > maxW) {
+          label = label.slice(0, -1);
+        }
+        label += "…";
+      }
+      ctx.fillText(label, 0, 0);
+    }
   }
 
   if (selected) {
@@ -758,6 +788,7 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
   const historyRef = useRef<PlacedElement[][]>([[]]);
   const historyIndexRef = useRef(0);
   const pendingInteractiveRef = useRef<PlacedElement[] | null>(null);
+  const imageCacheRef = useRef<Map<string, HTMLImageElement>>(new Map());
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -770,6 +801,18 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
   useEffect(() => { elementsRef.current = elements; }, [elements]);
   useEffect(() => { selectedIdsRef.current = selectedIds; }, [selectedIds]);
   useEffect(() => { hoveredIdRef.current = hoveredId; }, [hoveredId]);
+
+  useEffect(() => {
+    const allItems = ELEMENT_CATALOG.flatMap(c => c.items);
+    for (const cat of allItems) {
+      const imgPath: string | undefined = cat.itemRef?.topDownImagePath;
+      if (imgPath && !imageCacheRef.current.has(cat.type)) {
+        const img = new Image();
+        img.src = imgPath;
+        imageCacheRef.current.set(cat.type, img);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     return () => {
@@ -1080,6 +1123,7 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
     elementsRef.current.forEach(el => {
       const cat = ELEMENT_CATALOG.flatMap(c => c.items).find(i => i.type === el.type);
       if (!cat) return;
+      const topDownImg = imageCacheRef.current.get(el.type);
       drawShape(
         ctx,
         { ...cat, rotation: el.rotation || 0 },
@@ -1088,7 +1132,8 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
         el.wPx,
         el.hPx,
         selectedForRender.includes(el.id),
-        el.id === hoveredForRender
+        el.id === hoveredForRender,
+        topDownImg?.complete ? topDownImg : undefined
       );
     });
 
