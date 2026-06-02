@@ -16,7 +16,7 @@ const HERO_MODELS = [
   },
   {
     name: "Zelená zastávka",
-    modelPath: "/Zelena_Zastavka.stl",
+    modelPath: "/Zelena_Zastavka.glb",
     rotationPeriodMs: 7800,
   },
 ];

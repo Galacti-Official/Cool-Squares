@@ -3,6 +3,8 @@
 import { useEffect, useRef } from "react";
 import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
+import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
 
 type StlPreviewProps = {
   modelPath: string;
@@ -10,6 +12,9 @@ type StlPreviewProps = {
   className?: string;
   rotationPeriodMs?: number;
 };
+
+const dracoLoader = new DRACOLoader();
+dracoLoader.setDecoderPath("/draco/");
 
 export default function StlPreview({
   modelPath,
@@ -39,8 +44,13 @@ export default function StlPreview({
     rimLight.position.set(-3, 2, -2);
     scene.add(ambientLight, keyLight, rimLight);
 
-    const loader = new STLLoader();
-    let mesh: THREE.Mesh<THREE.BufferGeometry, THREE.MeshStandardMaterial> | null = null;
+    const material = new THREE.MeshStandardMaterial({
+      color: "#cfd6df",
+      metalness: 0.25,
+      roughness: 0.35,
+    });
+
+    let mesh: THREE.Mesh | null = null;
     const rotationSpeedRadPerSec = (Math.PI * 2) / (rotationPeriodMs / 1000);
 
     const fitCameraToMesh = () => {
@@ -62,15 +72,9 @@ export default function StlPreview({
       camera.updateProjectionMatrix();
     };
 
-    loader.load(modelPath, (geometry) => {
+    const setupMesh = (geometry: THREE.BufferGeometry) => {
       geometry.center();
       geometry.computeVertexNormals();
-
-      const material = new THREE.MeshStandardMaterial({
-        color: "#cfd6df",
-        metalness: 0.25,
-        roughness: 0.35,
-      });
 
       mesh = new THREE.Mesh(geometry, material);
       mesh.rotation.x = -Math.PI / 2;
@@ -83,7 +87,23 @@ export default function StlPreview({
 
       scene.add(mesh);
       fitCameraToMesh();
-    });
+    };
+
+    if (modelPath.endsWith(".glb") || modelPath.endsWith(".gltf")) {
+      const gltfLoader = new GLTFLoader();
+      gltfLoader.setDRACOLoader(dracoLoader);
+      gltfLoader.load(modelPath, (gltf) => {
+        gltf.scene.traverse((child) => {
+          if ((child as THREE.Mesh).isMesh) {
+            const m = child as THREE.Mesh;
+            setupMesh(m.geometry.clone());
+          }
+        });
+      });
+    } else {
+      const stlLoader = new STLLoader();
+      stlLoader.load(modelPath, setupMesh);
+    }
 
     const resize = () => {
       const width = container.clientWidth;
@@ -123,8 +143,9 @@ export default function StlPreview({
 
       if (mesh) {
         mesh.geometry.dispose();
-        mesh.material.dispose();
+        (mesh.material as THREE.Material).dispose();
       }
+      material.dispose();
 
       renderer.dispose();
       if (renderer.domElement.parentElement === container) {
