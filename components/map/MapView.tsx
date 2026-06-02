@@ -15,6 +15,31 @@ interface SelectedArea {
   areaSqKm: number;
 }
 
+function encodeHashPayload(payload: unknown): string {
+  return btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+}
+
+function decodeHashPayload<T>(value: string): T | null {
+  try {
+    return JSON.parse(decodeURIComponent(escape(atob(value)))) as T;
+  } catch {
+    return null;
+  }
+}
+
+function serializeArea(area: SelectedArea) {
+  return {
+    points: area.points.map(([lat, lng]) => [+lat.toFixed(7), +lng.toFixed(7)]),
+    bounds: {
+      north: +area.bounds.north.toFixed(7),
+      south: +area.bounds.south.toFixed(7),
+      east: +area.bounds.east.toFixed(7),
+      west: +area.bounds.west.toFixed(7),
+    },
+    areaSqKm: +area.areaSqKm.toFixed(8),
+  };
+}
+
 function segmentsIntersect(
   a1: [number, number], a2: [number, number],
   b1: [number, number], b2: [number, number]
@@ -389,11 +414,40 @@ function ResultsPage({
 }) {
   const [activeTab, setActiveTab] = useState("overview");
   const [visible, setVisible] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const toastTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => {
     const t = setTimeout(() => setVisible(true), 40);
     return () => clearTimeout(t);
   }, []);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimeoutRef.current !== null) window.clearTimeout(toastTimeoutRef.current);
+    };
+  }, []);
+
+  function showToast(message: string) {
+    if (toastTimeoutRef.current !== null) window.clearTimeout(toastTimeoutRef.current);
+    setToastMessage(message);
+    toastTimeoutRef.current = window.setTimeout(() => {
+      setToastMessage(null);
+      toastTimeoutRef.current = null;
+    }, 3000);
+  }
+
+  function shareSummary() {
+    const payload = {
+      v: 1,
+      area: serializeArea(area),
+    };
+    const shareUrl = `${window.location.origin}${window.location.pathname}#summary=${encodeHashPayload(payload)}`;
+
+    navigator.clipboard.writeText(shareUrl).then(() => {
+      showToast("Odkaz zkopírován do schránky");
+    });
+  }
 
   const { bounds, areaSqKm, points } = area;
   const centerLat = ((bounds.north + bounds.south) / 2).toFixed(4);
@@ -426,8 +480,8 @@ function ResultsPage({
           <span className="hidden sm:inline" style={{ fontSize: 13, color: "#2e3a1f99", whiteSpace: "nowrap" }}>{points.length} vrcholů</span>
         </div>
         <div className="flex items-center h-full shrink-0" style={{ borderLeft: "1.5px solid #2e3a1f22" }}>
-          {["Sdílet", "Uložit"].map((label) => (
-            <button key={label} className="hidden sm:block h-full px-4 sm:px-5" style={{ background: "none", border: "none", borderRight: "1.5px solid #2e3a1f22", cursor: "pointer", color: "#2e3a1f99", fontSize: 13, fontFamily: "inherit", letterSpacing: "0.04em" }} onClick={() => alert("Není ještě implementováno")}>
+          {["Sdílet"].map((label) => (
+            <button key={label} className="hidden sm:block h-full px-4 sm:px-5" style={{ background: "none", border: "none", borderRight: "1.5px solid #2e3a1f22", cursor: "pointer", color: "#2e3a1f99", fontSize: 13, fontFamily: "inherit", letterSpacing: "0.04em" }} onClick={shareSummary}>
               {label}
             </button>
           ))}
@@ -524,6 +578,17 @@ function ResultsPage({
           )}
         </main>
       </div>
+
+      {toastMessage && (
+        <div style={{
+          position: "fixed", bottom: 80, left: "50%", transform: "translateX(-50%)",
+          background: "#2e3a1f", color: "#F4F5E0", padding: "10px 22px",
+          borderRadius: 999, fontSize: 12, fontFamily: "inherit", letterSpacing: "0.04em",
+          zIndex: 9999, pointerEvents: "none",
+        }}>
+          {toastMessage}
+        </div>
+      )}
     </div>
   );
 }
@@ -823,20 +888,28 @@ export default function App() {
 
   useEffect(() => {
     const hash = window.location.hash;
-    if (!hash.startsWith("#plan=")) return;
-    try {
-      const json = decodeURIComponent(escape(atob(hash.slice(6))));
-      const data = JSON.parse(json);
-      if (data.v === 1 && data.area?.points && Array.isArray(data.elements)) {
-        setSelectedArea(data.area as SelectedArea);
-        setInitialPlan(data.elements as GeoElement[]);
+    if (hash.startsWith("#summary=")) {
+      const data = decodeHashPayload<{ v: number; area?: SelectedArea }>(hash.slice(9));
+      if (data?.v === 1 && data.area?.points) {
+        setSelectedArea(data.area);
+        setInitialPlan(undefined);
+        setPage("results");
+      }
+      return;
+    }
+    if (hash.startsWith("#plan=")) {
+      const data = decodeHashPayload<{ v: number; area?: SelectedArea; elements?: GeoElement[] }>(hash.slice(6));
+      if (data?.v === 1 && data.area?.points && Array.isArray(data.elements)) {
+        setSelectedArea(data.area);
+        setInitialPlan(data.elements);
         setPage("editor");
       }
-    } catch {}
+    }
   }, []);
 
   function handleAreaSelected(area: SelectedArea) {
     setSelectedArea(area);
+    setInitialPlan(undefined);
     setPage("results");
   }
 
