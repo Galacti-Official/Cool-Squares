@@ -749,13 +749,20 @@ export default function ParcelEditor({ area, onBack, initialPlan }: { area: Sele
   const pendingInteractiveRef = useRef<PlacedElement[] | null>(null);
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
-  const [shareToast, setShareToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const initialPlanRef = useRef<GeoElement[] | undefined>(initialPlan);
   const initialPlanApplied = useRef(false);
+  const toastTimeoutRef = useRef<number | null>(null);
 
   useEffect(() => { elementsRef.current = elements; }, [elements]);
   useEffect(() => { selectedIdsRef.current = selectedIds; }, [selectedIds]);
   useEffect(() => { hoveredIdRef.current = hoveredId; }, [hoveredId]);
+
+  useEffect(() => {
+    return () => {
+      if (toastTimeoutRef.current !== null) window.clearTimeout(toastTimeoutRef.current);
+    };
+  }, []);
 
 
   useEffect(() => {
@@ -825,6 +832,255 @@ export default function ParcelEditor({ area, onBack, initialPlan }: { area: Sele
     setZoomDisplay(Math.round(zoom * 100));
   }
 
+  function showToast(message: string) {
+    if (toastTimeoutRef.current !== null) window.clearTimeout(toastTimeoutRef.current);
+    setToastMessage(message);
+    toastTimeoutRef.current = window.setTimeout(() => {
+      setToastMessage(null);
+      toastTimeoutRef.current = null;
+    }, 3000);
+  }
+
+  function drawEditorScene(
+    ctx: CanvasRenderingContext2D,
+    w: number,
+    h: number,
+    options?: { selectedIds?: string[]; hoveredId?: string | null; showRotateHandle?: boolean }
+  ) {
+    const { x: vpX, y: vpY, zoom, angle } = vp.current;
+    const isSat = editorMapStyle === "satellite";
+    const hasTiles = isSat && satelliteTilesRef.current.length > 0;
+    const selectedForRender = options?.selectedIds ?? selectedIdsRef.current;
+    const hoveredForRender = options?.hoveredId ?? hoveredIdRef.current;
+    const showRotateHandle = options?.showRotateHandle ?? true;
+
+    const bgFill        = isSat ? "#5d6757" : "#d6d7c3";
+    const bgGrid        = isSat ? "#ffffff14" : "#c8c9b544";
+    const outsideFill   = isSat ? "#3f463bcc" : "#d6d7c3cc";
+    const parcelFill    = isSat ? "#6f7d68" : "#F4F5E0";
+    const fineGrid      = isSat ? "#ffffff10" : "#2e3a1f0d";
+    const accentGrid    = isSat ? "#ffffff1f" : "#2e3a1f18";
+    const parcelBorder  = isSat ? "#e8efda" : "#2e3a1f";
+    const labelColor    = isSat ? "#f1f6e0bb" : "#2e3a1f55";
+    const scaleColor    = isSat ? "#f1f6e0d0" : "#2e3a1f88";
+
+    ctx.clearRect(0, 0, w, h);
+    ctx.fillStyle = bgFill;
+    ctx.fillRect(0, 0, w, h);
+
+    const gridStep = 40;
+    ctx.strokeStyle = bgGrid;
+    ctx.lineWidth = 0.5;
+    const gox = ((vpX % gridStep) + gridStep) % gridStep;
+    const goy = ((vpY % gridStep) + gridStep) % gridStep;
+    for (let gx = gox - gridStep; gx < w + gridStep; gx += gridStep) {
+      ctx.beginPath();
+      ctx.moveTo(gx, 0);
+      ctx.lineTo(gx, h);
+      ctx.stroke();
+    }
+    for (let gy = goy - gridStep; gy < h + gridStep; gy += gridStep) {
+      ctx.beginPath();
+      ctx.moveTo(0, gy);
+      ctx.lineTo(w, gy);
+      ctx.stroke();
+    }
+
+    ctx.save();
+    const cos = Math.cos(angle), sin = Math.sin(angle);
+    ctx.setTransform(zoom * cos, zoom * sin, -zoom * sin, zoom * cos, vpX, vpY);
+
+    const { project, pixelsPerMetre } = makeProjection(area.points, w, h, 80);
+    pixelsPerMetreRef.current = pixelsPerMetre;
+    const worldPts = area.points.map(project);
+
+    const big = 999999;
+    ctx.beginPath();
+    ctx.rect(-big, -big, big * 2, big * 2);
+    ctx.moveTo(worldPts[0][0], worldPts[0][1]);
+    worldPts.forEach(([px, py]) => ctx.lineTo(px, py));
+    ctx.closePath();
+    ctx.fillStyle = outsideFill;
+    ctx.fill("evenodd");
+
+    ctx.beginPath();
+    ctx.moveTo(worldPts[0][0], worldPts[0][1]);
+    worldPts.forEach(([px, py]) => ctx.lineTo(px, py));
+    ctx.closePath();
+    ctx.fillStyle = parcelFill;
+    ctx.fill();
+
+    if (hasTiles) {
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(worldPts[0][0], worldPts[0][1]);
+      worldPts.forEach(([px, py]) => ctx.lineTo(px, py));
+      ctx.closePath();
+      ctx.clip();
+      ctx.globalAlpha = 0.95;
+      satelliteTilesRef.current.forEach(tile => {
+        const nw = project([tileYToLat(tile.y, tile.z), tileXToLng(tile.x, tile.z)]);
+        const se = project([tileYToLat(tile.y + 1, tile.z), tileXToLng(tile.x + 1, tile.z)]);
+        ctx.drawImage(
+          tile.img,
+          Math.min(nw[0], se[0]),
+          Math.min(nw[1], se[1]),
+          Math.abs(se[0] - nw[0]),
+          Math.abs(se[1] - nw[1])
+        );
+      });
+      ctx.globalAlpha = 1;
+      ctx.restore();
+    }
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(worldPts[0][0], worldPts[0][1]);
+    worldPts.forEach(([px, py]) => ctx.lineTo(px, py));
+    ctx.closePath();
+    ctx.clip();
+    const gw = pixelsPerMetre;
+    const xs2 = worldPts.map(p => p[0]), ys2 = worldPts.map(p => p[1]);
+    const wx0 = Math.floor(Math.min(...xs2) / gw) * gw;
+    const wy0 = Math.floor(Math.min(...ys2) / gw) * gw;
+    const wx1 = Math.ceil(Math.max(...xs2) / gw) * gw;
+    const wy1 = Math.ceil(Math.max(...ys2) / gw) * gw;
+    ctx.strokeStyle = fineGrid;
+    ctx.lineWidth = 0.5 / zoom;
+    for (let gx = wx0; gx <= wx1; gx += gw) {
+      ctx.beginPath();
+      ctx.moveTo(gx, wy0);
+      ctx.lineTo(gx, wy1);
+      ctx.stroke();
+    }
+    for (let gy = wy0; gy <= wy1; gy += gw) {
+      ctx.beginPath();
+      ctx.moveTo(wx0, gy);
+      ctx.lineTo(wx1, gy);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = accentGrid;
+    ctx.lineWidth = 1 / zoom;
+    for (let gx = wx0; gx <= wx1; gx += gw * 5) {
+      ctx.beginPath();
+      ctx.moveTo(gx, wy0);
+      ctx.lineTo(gx, wy1);
+      ctx.stroke();
+    }
+    for (let gy = wy0; gy <= wy1; gy += gw * 5) {
+      ctx.beginPath();
+      ctx.moveTo(wx0, gy);
+      ctx.lineTo(wx1, gy);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    ctx.beginPath();
+    ctx.moveTo(worldPts[0][0], worldPts[0][1]);
+    worldPts.forEach(([px, py]) => ctx.lineTo(px, py));
+    ctx.closePath();
+    ctx.strokeStyle = parcelBorder;
+    ctx.lineWidth = 2 / zoom;
+    ctx.setLineDash([]);
+    ctx.stroke();
+
+    if (isSat && !hasTiles) {
+      const cx = worldPts.reduce((s, p) => s + p[0], 0) / worldPts.length;
+      const cy = worldPts.reduce((s, p) => s + p[1], 0) / worldPts.length;
+      ctx.save();
+      ctx.fillStyle = "#f1f6e0dd";
+      ctx.font = `${12 / zoom}px sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(satImageStatus === "error" ? "Satelitní snímky nejsou dostupné" : "Načítám satelitní snímky…", cx, cy);
+      ctx.restore();
+    }
+
+    ctx.save();
+    ctx.font = `${11 / zoom}px sans-serif`;
+    ctx.fillStyle = labelColor;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.fillText(
+      formatAreaByMagnitude(area.areaSqKm),
+      worldPts[0][0] + 8 / zoom,
+      worldPts[0][1] + 8 / zoom
+    );
+    ctx.restore();
+
+    const barMetres = [0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000].find(m => m * pixelsPerMetre >= 80 / zoom) ?? 1000;
+    const barPx = barMetres * pixelsPerMetre;
+    const bx = Math.min(...xs2) + 10 / zoom;
+    const by = Math.max(...ys2) - 20 / zoom;
+    ctx.strokeStyle = scaleColor;
+    ctx.lineWidth = 2 / zoom;
+    ctx.beginPath();
+    ctx.moveTo(bx, by);
+    ctx.lineTo(bx + barPx, by);
+    ctx.moveTo(bx, by - 4 / zoom);
+    ctx.lineTo(bx, by + 4 / zoom);
+    ctx.moveTo(bx + barPx, by - 4 / zoom);
+    ctx.lineTo(bx + barPx, by + 4 / zoom);
+    ctx.stroke();
+    ctx.font = `${10 / zoom}px sans-serif`;
+    ctx.fillStyle = scaleColor;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "bottom";
+    ctx.fillText(barMetres >= 1000 ? `${barMetres / 1000}km` : `${barMetres}m`, bx + barPx / 2, by - 5 / zoom);
+
+    elementsRef.current.forEach(el => {
+      const cat = ELEMENT_CATALOG.flatMap(c => c.items).find(i => i.type === el.type);
+      if (!cat) return;
+      drawShape(
+        ctx,
+        { ...cat, rotation: el.rotation || 0 },
+        el.x,
+        el.y,
+        el.wPx,
+        el.hPx,
+        selectedForRender.includes(el.id),
+        el.id === hoveredForRender
+      );
+    });
+
+    ctx.restore();
+
+    rotateHandleRef.current = null;
+    if (showRotateHandle && selectedForRender.length === 1) {
+      const selId = selectedForRender[0];
+      const selEl = elementsRef.current.find(el => el.id === selId);
+      if (selEl) {
+        const cx = selEl.x + selEl.wPx / 2, cy = selEl.y + selEl.hPx / 2;
+        const theta = ((selEl.rotation || 0) * Math.PI) / 180;
+        const orbitDist = selEl.hPx / 2 + 28;
+        const [hx, hy] = worldToScreen(cx + Math.sin(theta) * orbitDist, cy - Math.cos(theta) * orbitDist);
+        const hr = 12;
+        rotateHandleRef.current = { id: selId, x: hx, y: hy, radius: hr };
+        const [cxs, cys] = worldToScreen(cx, cy);
+        ctx.save();
+        ctx.strokeStyle = "#2e3a1f66";
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.moveTo(cxs, cys);
+        ctx.lineTo(hx, hy);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(hx, hy, hr, 0, Math.PI * 2);
+        ctx.fillStyle = "#F4F5E0";
+        ctx.fill();
+        ctx.strokeStyle = "#2e3a1f";
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.fillStyle = "#2e3a1f";
+        ctx.font = "12px sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("↻", hx, hy + 0.5);
+        ctx.restore();
+      }
+    }
+  }
+
   useEffect(() => {
     if (!vpInitialised.current && canvasSize.current.w > 100) {
       fitParcel();
@@ -842,169 +1098,7 @@ export default function ParcelEditor({ area, onBack, initialPlan }: { area: Sele
     function render() {
       const { w, h } = canvasSize.current;
       if (!w || !h) { raf = requestAnimationFrame(render); return; }
-      const { x: vpX, y: vpY, zoom, angle } = vp.current;
-      const isSat = editorMapStyle === "satellite";
-      const hasTiles = isSat && satelliteTilesRef.current.length > 0;
-
-      const bgFill        = isSat ? "#5d6757" : "#d6d7c3";
-      const bgGrid        = isSat ? "#ffffff14" : "#c8c9b544";
-      const outsideFill   = isSat ? "#3f463bcc" : "#d6d7c3cc";
-      const parcelFill    = isSat ? "#6f7d68" : "#F4F5E0";
-      const fineGrid      = isSat ? "#ffffff10" : "#2e3a1f0d";
-      const accentGrid    = isSat ? "#ffffff1f" : "#2e3a1f18";
-      const parcelBorder  = isSat ? "#e8efda" : "#2e3a1f";
-      const labelColor    = isSat ? "#f1f6e0bb" : "#2e3a1f55";
-      const scaleColor    = isSat ? "#f1f6e0d0" : "#2e3a1f88";
-
-      ctx.clearRect(0, 0, w, h);
-      ctx.fillStyle = bgFill;
-      ctx.fillRect(0, 0, w, h);
-
-      const gridStep = 40;
-      ctx.strokeStyle = bgGrid; ctx.lineWidth = 0.5;
-      const gox = ((vpX % gridStep) + gridStep) % gridStep;
-      const goy = ((vpY % gridStep) + gridStep) % gridStep;
-      for (let gx = gox - gridStep; gx < w + gridStep; gx += gridStep) {
-        ctx.beginPath(); ctx.moveTo(gx, 0); ctx.lineTo(gx, h); ctx.stroke();
-      }
-      for (let gy = goy - gridStep; gy < h + gridStep; gy += gridStep) {
-        ctx.beginPath(); ctx.moveTo(0, gy); ctx.lineTo(w, gy); ctx.stroke();
-      }
-
-      ctx.save();
-      const cos = Math.cos(angle), sin = Math.sin(angle);
-      ctx.setTransform(zoom * cos, zoom * sin, -zoom * sin, zoom * cos, vpX, vpY);
-
-      const { project, pixelsPerMetre } = makeProjection(area.points, w, h, 80);
-      pixelsPerMetreRef.current = pixelsPerMetre;
-      const worldPts = area.points.map(project);
-
-      const big = 999999;
-      ctx.beginPath();
-      ctx.rect(-big, -big, big * 2, big * 2);
-      ctx.moveTo(worldPts[0][0], worldPts[0][1]);
-      worldPts.forEach(([px, py]) => ctx.lineTo(px, py));
-      ctx.closePath();
-      ctx.fillStyle = outsideFill;
-      ctx.fill("evenodd");
-
-      ctx.beginPath();
-      ctx.moveTo(worldPts[0][0], worldPts[0][1]);
-      worldPts.forEach(([px, py]) => ctx.lineTo(px, py));
-      ctx.closePath();
-      ctx.fillStyle = parcelFill;
-      ctx.fill();
-
-      if (hasTiles) {
-        ctx.save();
-        ctx.beginPath();
-        ctx.moveTo(worldPts[0][0], worldPts[0][1]);
-        worldPts.forEach(([px, py]) => ctx.lineTo(px, py));
-        ctx.closePath(); ctx.clip();
-        ctx.globalAlpha = 0.95;
-        satelliteTilesRef.current.forEach(tile => {
-          const nw = project([tileYToLat(tile.y, tile.z), tileXToLng(tile.x, tile.z)]);
-          const se = project([tileYToLat(tile.y + 1, tile.z), tileXToLng(tile.x + 1, tile.z)]);
-          ctx.drawImage(tile.img, Math.min(nw[0], se[0]), Math.min(nw[1], se[1]),
-            Math.abs(se[0] - nw[0]), Math.abs(se[1] - nw[1]));
-        });
-        ctx.globalAlpha = 1; ctx.restore();
-      }
-
-      ctx.save();
-      ctx.beginPath();
-      ctx.moveTo(worldPts[0][0], worldPts[0][1]);
-      worldPts.forEach(([px, py]) => ctx.lineTo(px, py));
-      ctx.closePath(); ctx.clip();
-      const gw = pixelsPerMetre;
-      const xs2 = worldPts.map(p => p[0]), ys2 = worldPts.map(p => p[1]);
-      const wx0 = Math.floor(Math.min(...xs2) / gw) * gw;
-      const wy0 = Math.floor(Math.min(...ys2) / gw) * gw;
-      const wx1 = Math.ceil(Math.max(...xs2) / gw) * gw;
-      const wy1 = Math.ceil(Math.max(...ys2) / gw) * gw;
-      ctx.strokeStyle = fineGrid; ctx.lineWidth = 0.5 / zoom;
-      for (let gx = wx0; gx <= wx1; gx += gw) { ctx.beginPath(); ctx.moveTo(gx, wy0); ctx.lineTo(gx, wy1); ctx.stroke(); }
-      for (let gy = wy0; gy <= wy1; gy += gw) { ctx.beginPath(); ctx.moveTo(wx0, gy); ctx.lineTo(wx1, gy); ctx.stroke(); }
-      ctx.strokeStyle = accentGrid; ctx.lineWidth = 1 / zoom;
-      for (let gx = wx0; gx <= wx1; gx += gw * 5) { ctx.beginPath(); ctx.moveTo(gx, wy0); ctx.lineTo(gx, wy1); ctx.stroke(); }
-      for (let gy = wy0; gy <= wy1; gy += gw * 5) { ctx.beginPath(); ctx.moveTo(wx0, gy); ctx.lineTo(wx1, gy); ctx.stroke(); }
-      ctx.restore();
-
-      ctx.beginPath();
-      ctx.moveTo(worldPts[0][0], worldPts[0][1]);
-      worldPts.forEach(([px, py]) => ctx.lineTo(px, py));
-      ctx.closePath();
-      ctx.strokeStyle = parcelBorder; ctx.lineWidth = 2 / zoom; ctx.setLineDash([]); ctx.stroke();
-
-      if (isSat && !hasTiles) {
-        const cx = worldPts.reduce((s, p) => s + p[0], 0) / worldPts.length;
-        const cy = worldPts.reduce((s, p) => s + p[1], 0) / worldPts.length;
-        ctx.save();
-        ctx.fillStyle = "#f1f6e0dd";
-        ctx.font = `${12 / zoom}px sans-serif`;
-        ctx.textAlign = "center"; ctx.textBaseline = "middle";
-        ctx.fillText(satImageStatus === "error" ? "Satelitní snímky nejsou dostupné" : "Načítám satelitní snímky…", cx, cy);
-        ctx.restore();
-      }
-
-      ctx.save();
-      ctx.font = `${11 / zoom}px sans-serif`;
-      ctx.fillStyle = labelColor; ctx.textAlign = "left"; ctx.textBaseline = "top";
-      ctx.fillText(
-        formatAreaByMagnitude(area.areaSqKm),
-        worldPts[0][0] + 8 / zoom, worldPts[0][1] + 8 / zoom
-      );
-      ctx.restore();
-
-      {
-        const barMetres = [0.5,1,2,5,10,20,50,100,200,500,1000].find(m => m * pixelsPerMetre >= 80 / zoom) ?? 1000;
-        const barPx = barMetres * pixelsPerMetre;
-        const bx = Math.min(...xs2) + 10 / zoom;
-        const by = Math.max(...ys2) - 20 / zoom;
-        ctx.strokeStyle = scaleColor; ctx.lineWidth = 2 / zoom;
-        ctx.beginPath();
-        ctx.moveTo(bx, by); ctx.lineTo(bx + barPx, by);
-        ctx.moveTo(bx, by - 4 / zoom); ctx.lineTo(bx, by + 4 / zoom);
-        ctx.moveTo(bx + barPx, by - 4 / zoom); ctx.lineTo(bx + barPx, by + 4 / zoom);
-        ctx.stroke();
-        ctx.font = `${10 / zoom}px sans-serif`;
-        ctx.fillStyle = scaleColor; ctx.textAlign = "center"; ctx.textBaseline = "bottom";
-        ctx.fillText(barMetres >= 1000 ? `${barMetres / 1000}km` : `${barMetres}m`, bx + barPx / 2, by - 5 / zoom);
-      }
-
-      elementsRef.current.forEach(el => {
-        const cat = ELEMENT_CATALOG.flatMap(c => c.items).find(i => i.type === el.type);
-        if (!cat) return;
-        drawShape(ctx, { ...cat, rotation: el.rotation || 0 }, el.x, el.y, el.wPx, el.hPx,
-          selectedIdsRef.current.includes(el.id), el.id === hoveredIdRef.current);
-      });
-
-      ctx.restore();
-
-      rotateHandleRef.current = null;
-      if (selectedIdsRef.current.length === 1) {
-        const selId = selectedIdsRef.current[0];
-        const selEl = elementsRef.current.find(el => el.id === selId);
-        if (selEl) {
-          const cx = selEl.x + selEl.wPx / 2, cy = selEl.y + selEl.hPx / 2;
-          const theta = ((selEl.rotation || 0) * Math.PI) / 180;
-          const orbitDist = selEl.hPx / 2 + 28;
-          const [hx, hy] = worldToScreen(cx + Math.sin(theta) * orbitDist, cy - Math.cos(theta) * orbitDist);
-          const hr = 12;
-          rotateHandleRef.current = { id: selId, x: hx, y: hy, radius: hr };
-          const [cxs, cys] = worldToScreen(cx, cy);
-          ctx.save();
-          ctx.strokeStyle = "#2e3a1f66"; ctx.lineWidth = 1.2;
-          ctx.beginPath(); ctx.moveTo(cxs, cys); ctx.lineTo(hx, hy); ctx.stroke();
-          ctx.beginPath(); ctx.arc(hx, hy, hr, 0, Math.PI * 2);
-          ctx.fillStyle = "#F4F5E0"; ctx.fill();
-          ctx.strokeStyle = "#2e3a1f"; ctx.lineWidth = 1.5; ctx.stroke();
-          ctx.fillStyle = "#2e3a1f"; ctx.font = "12px sans-serif";
-          ctx.textAlign = "center"; ctx.textBaseline = "middle";
-          ctx.fillText("↻", hx, hy + 0.5);
-          ctx.restore();
-        }
-      }
+      drawEditorScene(ctx, w, h);
 
       raf = requestAnimationFrame(render);
     }
@@ -1467,6 +1561,36 @@ export default function ParcelEditor({ area, onBack, initialPlan }: { area: Sele
     : computePlanStats(elements, parcelAreaSqM, pixelsPerMetreRef.current);
 
   function exportPlan() {
+    const sourceCanvas = canvasRef.current;
+    const { w, h } = canvasSize.current;
+    if (!sourceCanvas || !w || !h) return;
+
+    const exportCanvas = document.createElement("canvas");
+    exportCanvas.width = w;
+    exportCanvas.height = h;
+    const exportCtx = exportCanvas.getContext("2d");
+    if (!exportCtx) return;
+
+    drawEditorScene(exportCtx, w, h, { selectedIds: [], hoveredId: null, showRotateHandle: false });
+
+    exportCanvas.toBlob(blob => {
+      if (!blob) {
+        showToast("Export PNG se nepodařil");
+        return;
+      }
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `plan-${new Date().toISOString().slice(0, 10)}.png`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+      showToast("PNG export stažen");
+    }, "image/png");
+  }
+
+  function sharePlan() {
     const { w, h } = canvasSize.current;
     if (!w || !h) return;
 
@@ -1504,8 +1628,7 @@ export default function ParcelEditor({ area, onBack, initialPlan }: { area: Sele
     const shareUrl = `${window.location.origin}${window.location.pathname}#plan=${b64}`;
 
     navigator.clipboard.writeText(shareUrl).then(() => {
-      setShareToast(true);
-      setTimeout(() => setShareToast(false), 3000);
+      showToast("Odkaz zkopírován do schránky");
     });
   }
 
@@ -1579,6 +1702,9 @@ export default function ParcelEditor({ area, onBack, initialPlan }: { area: Sele
           </button>
           <button onClick={exportPlan} style={{ height: "100%", padding: "0 20px", background: "none", border: "none", cursor: "pointer", color: "#2e3a1f", fontSize: 12, fontFamily: "inherit", letterSpacing: "0.04em" }}>
             Exportovat plán
+          </button>
+          <button onClick={sharePlan} style={{ height: "100%", padding: "0 20px", background: "none", border: "none", cursor: "pointer", color: "#2e3a1f", fontSize: 12, fontFamily: "inherit", letterSpacing: "0.04em" }}>
+            Sdílet
           </button>
         </div>
       </header>
@@ -1718,7 +1844,7 @@ export default function ParcelEditor({ area, onBack, initialPlan }: { area: Sele
         area={area}
       />
 
-      {shareToast && (
+      {toastMessage && (
         <div style={{
           position: "fixed", bottom: 80, left: "50%", transform: "translateX(-50%)",
           background: "#2e3a1f", color: "#F4F5E0", padding: "10px 22px",
@@ -1726,7 +1852,7 @@ export default function ParcelEditor({ area, onBack, initialPlan }: { area: Sele
           zIndex: 9999, pointerEvents: "none",
           animation: "fadeInUp 0.2s ease",
         }}>
-          Odkaz zkopírován do schránky
+          {toastMessage}
         </div>
       )}
     </div>
