@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import ParcelEditor from "./ParcelEditor";
+import ParcelEditor, { type GeoElement } from "./ParcelEditor";
 import { formatAreaByMagnitude, formatDistanceByMagnitude } from "./areaFormat";
 import ClimateMap from "./ClimateMap";
 import Image from "next/image";
@@ -60,7 +60,24 @@ function computeAreaSqKm(points: [number, number][]): number {
   return Math.abs((area * R * R) / 2);
 }
 
+const MAX_SELECTION_SIDE_KM = 2;
 
+function computeSelectionSizeKm(points: [number, number][]): { widthKm: number; heightKm: number } {
+  if (points.length < 2) return { widthKm: 0, heightKm: 0 };
+  const lats = points.map((p) => p[0]);
+  const lngs = points.map((p) => p[1]);
+  const north = Math.max(...lats), south = Math.min(...lats);
+  const east = Math.max(...lngs), west = Math.min(...lngs);
+  const midLat = (north + south) / 2;
+  const widthKm = ((east - west) * Math.PI * 6371 * Math.cos((midLat * Math.PI) / 180)) / 180;
+  const heightKm = ((north - south) * Math.PI * 6371) / 180;
+  return { widthKm: Math.abs(widthKm), heightKm: Math.abs(heightKm) };
+}
+
+function exceedsSelectionLimit(points: [number, number][]): boolean {
+  const { widthKm, heightKm } = computeSelectionSizeKm(points);
+  return widthKm > MAX_SELECTION_SIDE_KM || heightKm > MAX_SELECTION_SIDE_KM;
+}
 
 function MiniMap({ area }: { area: SelectedArea }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -376,12 +393,14 @@ function MapView({ onAreaSelected }: { onAreaSelected: (area: SelectedArea) => v
           const dx = first.x - clicked.x, dy = first.y - clicked.y;
           if (Math.sqrt(dx * dx + dy * dy) < 12) {
             if (closingWouldSelfIntersect(points)) { flashInvalid("Nelze uzavřít, tvar by se protínal"); return; }
+            if (exceedsSelectionLimit(points)) { flashInvalid("Maximální velikost označení je 2 km × 2 km"); return; }
             closePolygonFn(L, map);
             return;
           }
         }
 
         if (wouldSelfIntersect(points, latlng)) { flashInvalid("Čáry se nesmí křížit, zkuste jiný bod"); return; }
+        if (exceedsSelectionLimit([...points, latlng])) { flashInvalid("Maximální velikost označení je 2 km × 2 km"); return; }
 
         points.push(latlng);
         setPointCount(points.length);
@@ -426,6 +445,7 @@ function MapView({ onAreaSelected }: { onAreaSelected: (area: SelectedArea) => v
   function closePolygonFn(L: any, map: any) {
     const points = pointsRef.current;
     if (points.length < 3) return;
+    if (exceedsSelectionLimit(points)) { flashInvalid("Maximální velikost označení je 2 km × 2 km"); return; }
     closingRef.current = true;
 
     tempMarkersRef.current.forEach((m) => map.removeLayer(m));
@@ -536,6 +556,21 @@ function MapView({ onAreaSelected }: { onAreaSelected: (area: SelectedArea) => v
 export default function App() {
   const [page, setPage] = useState<AppPage>("map");
   const [selectedArea, setSelectedArea] = useState<SelectedArea | null>(null);
+  const [initialPlan, setInitialPlan] = useState<GeoElement[] | undefined>(undefined);
+
+  useEffect(() => {
+    const hash = window.location.hash;
+    if (!hash.startsWith("#plan=")) return;
+    try {
+      const json = decodeURIComponent(escape(atob(hash.slice(6))));
+      const data = JSON.parse(json);
+      if (data.v === 1 && data.area?.points && Array.isArray(data.elements)) {
+        setSelectedArea(data.area as SelectedArea);
+        setInitialPlan(data.elements as GeoElement[]);
+        setPage("editor");
+      }
+    } catch {}
+  }, []);
 
   function handleAreaSelected(area: SelectedArea) {
     setSelectedArea(area);
@@ -558,6 +593,7 @@ export default function App() {
         <ParcelEditor
           area={selectedArea}
           onBack={() => setPage("results")}
+          initialPlan={initialPlan}
         />
       )}
     </div>
