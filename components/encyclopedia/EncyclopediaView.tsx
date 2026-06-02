@@ -209,13 +209,13 @@ function ItemCard({ item, onClick }: { item: Item; onClick: () => void }) {
 
       <div className="flex items-center gap-2 mt-3 flex-wrap">
         <span className={`${BADGE} ${COST_COLOR[item.cost]}`}>
-          {item.cost === "low" ? "💚" : item.cost === "medium" ? "🟡" : "🔴"} Cena: {priceLabel}
+          {item.cost === "low" ? "" : item.cost === "medium" ? "" : ""} Cena: {priceLabel}
         </span>
         <span className={`${BADGE} bg-fg text-text-mid`}>
-          🔧 Údržba: {MAINT_LABEL[item.maintenance]}
+          Údržba: {MAINT_LABEL[item.maintenance]}
         </span>
         {!item.waterNeeded && (
-          <span className={`${BADGE} bg-fg text-text-mid`}>💧 Bez potřeby vody</span>
+          <span className={`${BADGE} bg-fg text-text-mid`}>Bez potřeby vody</span>
         )}
       </div>
     </button>
@@ -383,7 +383,23 @@ export default function EncyclopediaView() {
 
         <div className="flex flex-col sm:flex-row gap-3 mb-6">
           <div className="relative flex-1">
-            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-light text-sm">🔍</span>
+            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-light">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <circle cx="11" cy="11" r="8" />
+                <path d="m21 21-4.3-4.3" />
+              </svg>
+            </span>
             <input
               type="text"
               placeholder="Hledat název, štítky, materiál, specifikace…"
