@@ -181,27 +181,6 @@ function LandCoverSkeleton() {
   );
 }
 
-function ElevationSkeleton() {
-  return (
-    <div style={{ padding: "16px 20px" }} className="animate-pulse">
-      <div style={{ width: "100%", height: 72, borderRadius: 3, overflow: "hidden", marginBottom: 12 }}>
-        <svg viewBox="0 0 600 72" style={{ width: "100%", height: "100%", display: "block" }} preserveAspectRatio="none">
-          <path d="M0,62 C60,58 130,32 200,36 C270,40 310,18 370,22 C430,26 480,44 530,38 C565,34 590,46 600,52 L600,72 L0,72 Z"
-            fill="#2e3a1f14" />
-        </svg>
-      </div>
-      <div style={{ display: "flex", gap: 20 }}>
-        {[48, 56, 48, 44].map((w, i) => (
-          <div key={i} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <div style={{ width: 30, height: 7, borderRadius: 2, background: "#2e3a1f10" }} />
-            <div style={{ width: w, height: 12, borderRadius: 2, background: "#2e3a1f18" }} />
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 function AdminSkeleton() {
   return (
     <div style={{ padding: "16px 20px", display: "flex", alignItems: "center", gap: 6 }} className="animate-pulse">
@@ -280,77 +259,6 @@ function LandCoverSummary({ area }: { area: SelectedArea }) {
           </div>
         </>
       )}
-    </div>
-  );
-}
-
-function ElevationProfile({ area }: { area: SelectedArea }) {
-  const N = 24;
-  const [elevations, setElevations] = useState<number[] | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
-
-  useEffect(() => {
-    const { north, south, east, west } = area.bounds;
-    const lat = ((north + south) / 2).toFixed(6);
-    const locations = Array.from({ length: N }, (_, i) => {
-      const lng = (west + (east - west) * (i / (N - 1))).toFixed(6);
-      return `${lat},${lng}`;
-    }).join("|");
-    fetch(`https://api.opentopodata.org/v1/eudem25m?locations=${locations}`)
-      .then(r => r.json())
-      .then(data => {
-        if (data.status !== "OK") throw new Error();
-        const elev = (data.results as any[])
-          .map((r: any) => r.elevation)
-          .filter((e: any): e is number => typeof e === "number");
-        setElevations(elev);
-        setLoading(false);
-      })
-      .catch(() => { setError(true); setLoading(false); });
-  }, []);
-
-  if (loading) return <ElevationSkeleton />;
-  if (error || !elevations || elevations.length < 2) return <div style={{ padding: "16px 20px", fontSize: 12, color: "#2e3a1f44", fontStyle: "italic" }}>Data nejsou dostupná</div>;
-
-  const minE = Math.min(...elevations);
-  const maxE = Math.max(...elevations);
-  const avgE = Math.round(elevations.reduce((a, b) => a + b, 0) / elevations.length);
-  const range = maxE - minE || 1;
-
-  const W = 600, H = 72, PX = 2, PY = 6;
-  const pts = elevations.map((e, i) => [
-    PX + (i / (elevations.length - 1)) * (W - PX * 2),
-    PY + (1 - (e - minE) / range) * (H - PY * 2),
-  ] as [number, number]);
-  const lineD = "M" + pts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" L");
-  const areaD = `${lineD} L${(W - PX).toFixed(1)},${H} L${PX},${H} Z`;
-
-  return (
-    <div style={{ padding: "16px 20px" }}>
-      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: 72, display: "block", marginBottom: 12 }} preserveAspectRatio="none">
-        <defs>
-          <linearGradient id="elevGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#4A7C59" stopOpacity="0.35" />
-            <stop offset="100%" stopColor="#4A7C59" stopOpacity="0.04" />
-          </linearGradient>
-        </defs>
-        <path d={areaD} fill="url(#elevGrad)" />
-        <path d={lineD} fill="none" stroke="#4A7C59" strokeWidth="1.8" strokeLinejoin="round" />
-      </svg>
-      <div style={{ display: "flex", gap: 20 }}>
-        {[
-          { label: "Min",    value: `${Math.round(minE)} m n.m.` },
-          { label: "Průměr", value: `${avgE} m n.m.` },
-          { label: "Max",    value: `${Math.round(maxE)} m n.m.` },
-          { label: "Rozsah", value: `${Math.round(range)} m` },
-        ].map(({ label, value }) => (
-          <div key={label}>
-            <div style={{ fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", color: "#2e3a1f55", marginBottom: 2 }}>{label}</div>
-            <div style={{ fontSize: 13, color: "#2e3a1f", fontStyle: "italic" }}>{value}</div>
-          </div>
-        ))}
-      </div>
     </div>
   );
 }
@@ -545,7 +453,6 @@ function ResultsPage({
               </div>
               {[
                 { title: "Souhrn pokryvu půdy", content: <LandCoverSummary area={area} /> },
-                { title: "Výškový profil",      content: <ElevationProfile area={area} /> },
                 { title: "Správní celky",       content: <AdminUnits area={area} /> },
               ].map(({ title, content }) => (
                 <div key={title} style={{ border: "1.5px solid #2e3a1f22", borderRadius: 4, marginBottom: 16, overflow: "hidden" }}>
