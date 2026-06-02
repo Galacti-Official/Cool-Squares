@@ -14,6 +14,11 @@ const HERO_MODELS = [
     modelPath: encodeURI("/Rostliná stěna.stl"),
     rotationPeriodMs: 7000,
   },
+  {
+    name: "Zelená zastávka",
+    modelPath: "/Zelena_Zastavka.stl",
+    rotationPeriodMs: 7800,
+  },
 ];
 const HERO_MODEL_SWITCH_INTERVAL_MS = 6500;
 

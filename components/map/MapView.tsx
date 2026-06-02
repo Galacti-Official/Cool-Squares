@@ -267,6 +267,60 @@ function LandCoverSummary({ area }: { area: SelectedArea }) {
   );
 }
 
+
+const URBAN_SURFACES: { name: string; heat: number; note: string }[] = [
+  { name: "Asfalt",          heat: 10, note: "až +50 °C na povrchu, absorbuje skoro vše" },
+  { name: "Kovové povrchy",  heat: 9,  note: "lavičky, sloupy — extrémní v přímém slunci" },
+  { name: "Tmavá dlažba",    heat: 8,  note: "zadržuje teplo i po západu slunce" },
+  { name: "Beton",           heat: 7,  note: "masivní tepelná kapacita, pomalu chladne" },
+  { name: "Světlá dlažba",   heat: 5,  note: "žulové kostky, světlá betonová dlažba" },
+  { name: "Suchý písek",     heat: 5,  note: "rychle se zahřívá, ale i rychle chladne" },
+  { name: "Štěrk",           heat: 4,  note: "propustný pro vodu, ale zahřívá se" },
+  { name: "Suchá tráva",     heat: 3,  note: "při suchu ztrácí ochlazující efekt" },
+  { name: "Zelená tráva",    heat: 2,  note: "evapotranspirace snižuje okolní teplotu" },
+  { name: "Keře / vegetace", heat: 2,  note: "stín + odpařování" },
+  { name: "Stromy",          heat: 1,  note: "stín + evapotranspirace — nejúčinnější" },
+  { name: "Vodní plocha",    heat: 1,  note: "trvalé ochlazování okolí odpařováním" },
+];
+
+function heatColor(heat: number): string {
+  const t = (heat - 1) / 9;
+  const r = Math.round(39  + t * (192 - 39));
+  const g = Math.round(174 + t * (57  - 174));
+  const b = Math.round(96  + t * (43  - 96));
+  return `rgb(${r},${g},${b})`;
+}
+
+function UrbanSurfaceTierlist() {
+  return (
+    <div style={{ padding: "16px 20px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+        <span style={{ fontSize: 10, color: "#2e3a1f66", whiteSpace: "nowrap" }}>chladí</span>
+        <div style={{
+          flex: 1, height: 6, borderRadius: 99,
+          background: "linear-gradient(to right, #27ae60, #f1c40f, #c0392b)",
+        }} />
+        <span style={{ fontSize: 10, color: "#2e3a1f66", whiteSpace: "nowrap" }}>zahřívá</span>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+        {URBAN_SURFACES.map((s) => {
+          const color = heatColor(s.heat);
+          const pct = ((s.heat - 1) / 9) * 100;
+          return (
+            <div key={s.name} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{ width: 100, flexShrink: 0, position: "relative", height: 3, background: "#2e3a1f0e", borderRadius: 99 }}>
+                <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: `${pct}%`, background: color, borderRadius: 99 }} />
+              </div>
+              <span style={{ fontSize: 12, color: "#2e3a1f", fontWeight: 600, minWidth: 110 }}>{s.name}</span>
+              <span style={{ fontSize: 10, color: "#2e3a1f55", fontStyle: "italic" }}>{s.note}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function AdminUnits({ area }: { area: SelectedArea }) {
   const [levels, setLevels] = useState<{ label: string; value: string }[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -552,6 +606,7 @@ function ResultsPage({
                   {[
                     { title: "Souhrn pokryvu půdy", content: <LandCoverSummary area={a} /> },
                     { title: "Správní celky",       content: <AdminUnits area={a} /> },
+                    { title: "Tierlist povrchů ve městě", content: <UrbanSurfaceTierlist /> },
                   ].map(({ title, content }) => (
                     <div key={title} style={{ border: "1.5px solid #2e3a1f22", borderRadius: 4, marginBottom: 16, overflow: "hidden" }}>
                       <div style={{ padding: "14px 20px", borderBottom: "1.5px solid #2e3a1f22" }}>
