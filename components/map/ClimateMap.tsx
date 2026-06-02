@@ -11,11 +11,12 @@ interface ClimateSample {
   lat: number;
   lng: number;
   temperature: number;
+  elevation: number;
   time: string;
 }
 
 const PARCEL_GRID_SIZE = 5;
-const CZECH_GRID_SIZE = 20;
+const CZECH_GRID_SIZE = 14;
 const climateCache = new Map<string, Promise<ClimateSample[]>>();
 let leafletLoader: Promise<any> | null = null;
 const CZECH_BOUNDS = {
@@ -25,6 +26,49 @@ const CZECH_BOUNDS = {
   west: 12.05,
 };
 const CZECH_GEOJSON_URL = "https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson";
+
+interface CityThermalOverlay {
+  labelCz: string;
+  source: string;
+  bounds: { north: number; south: number; east: number; west: number };
+  serviceUrl: string;
+}
+
+const CITY_THERMAL_OVERLAYS: CityThermalOverlay[] = [
+  {
+    labelCz: "Teplotní mapa Brna 2024",
+    source: "gis.brno.cz · CzechGlobe",
+    bounds: { north: 49.34, south: 49.10, east: 16.77, west: 16.44 },
+    serviceUrl: "https://gis.brno.cz/ags2/rest/services/PUBLIC/TM_teplotni_mapa_2024/MapServer",
+  },
+];
+
+function areaIntersectsCity(
+  area: { north: number; south: number; east: number; west: number },
+  city: CityThermalOverlay["bounds"],
+  padding = 0.04
+): boolean {
+  return (
+    area.north > city.south - padding &&
+    area.south < city.north + padding &&
+    area.east > city.west - padding &&
+    area.west < city.east + padding
+  );
+}
+
+function buildArcGISExportUrl(serviceUrl: string, b: CityThermalOverlay["bounds"]): string {
+  const w = 2048;
+  const h = Math.round(w * (b.north - b.south) / (b.east - b.west));
+  const url = new URL(`${serviceUrl}/export`);
+  url.searchParams.set("bbox", `${b.west},${b.south},${b.east},${b.north}`);
+  url.searchParams.set("bboxSR", "4326");
+  url.searchParams.set("imageSR", "4326");
+  url.searchParams.set("size", `${w},${Math.min(h, 2048)}`);
+  url.searchParams.set("format", "png32");
+  url.searchParams.set("transparent", "true");
+  url.searchParams.set("f", "image");
+  return url.toString();
+}
 
 function loadLeaflet(): Promise<any> {
   if (typeof window === "undefined") {
@@ -113,6 +157,7 @@ async function fetchClimateSamples(bounds: ClimateArea["bounds"], gridSize: numb
   })();
 
   climateCache.set(key, request);
+  request.catch(() => climateCache.delete(key));
   return request;
 }
 
@@ -122,11 +167,12 @@ async function fetchWithRetry(url: string, maxRetries: number): Promise<any> {
     try {
       const res = await fetch(url);
       if (res.status === 429) {
-        const waitMs = Math.min(6000, 450 * 2 ** attempt) + Math.floor(Math.random() * 220);
+        lastErr = new Error(`Open-Meteo rate limited (attempt ${attempt + 1}/${maxRetries + 1})`);
+        const waitMs = Math.min(8000, 600 * 2 ** attempt) + Math.floor(Math.random() * 400);
         await new Promise((resolve) => setTimeout(resolve, waitMs));
         continue;
       }
-      if (!res.ok) throw new Error(`Open-Meteo request failed with ${res.status}`);
+      if (!res.ok) throw new Error(`Open-Meteo responded with ${res.status}`);
       return await res.json();
     } catch (err: any) {
       lastErr = err instanceof Error ? err : new Error(String(err));
@@ -142,17 +188,23 @@ async function fetchWithRetry(url: string, maxRetries: number): Promise<any> {
 function parseBatchResponse(json: any, fallbackPoints: [number, number][]): ClimateSample[] {
   const rows = Array.isArray(json) ? json : [json];
   const temps: number[] = [];
+  const elevations: number[] = [];
   let time = "";
 
   rows.forEach((row: any) => {
+    const rowElev = typeof row?.elevation === "number" ? row.elevation : 0;
+
     if (Array.isArray(row?.current)) {
+      const before = temps.length;
       row.current.forEach((entry: any) => {
         if (typeof entry?.temperature_2m === "number") temps.push(entry.temperature_2m);
         if (!time && entry?.time) time = String(entry.time);
       });
+      for (let i = temps.length - before; i > 0; i--) elevations.push(rowElev);
       return;
     }
     if (Array.isArray(row?.current?.temperature_2m)) {
+      const before = temps.length;
       row.current.temperature_2m.forEach((t: any) => {
         if (typeof t === "number") temps.push(t);
       });
@@ -160,10 +212,12 @@ function parseBatchResponse(json: any, fallbackPoints: [number, number][]): Clim
         if (Array.isArray(row.current.time)) time = String(row.current.time[0] ?? "");
         else time = String(row.current.time);
       }
+      for (let i = temps.length - before; i > 0; i--) elevations.push(rowElev);
       return;
     }
     if (typeof row?.current?.temperature_2m === "number") {
       temps.push(row.current.temperature_2m);
+      elevations.push(rowElev);
       if (!time && row?.current?.time) time = String(row.current.time);
       return;
     }
@@ -178,6 +232,7 @@ function parseBatchResponse(json: any, fallbackPoints: [number, number][]): Clim
       lat,
       lng,
       temperature: temps[0],
+      elevation: elevations[0] ?? 0,
       time,
     }));
   }
@@ -190,6 +245,7 @@ function parseBatchResponse(json: any, fallbackPoints: [number, number][]): Clim
     lat,
     lng,
     temperature: temps[i],
+    elevation: elevations[i] ?? 0,
     time,
   }));
 }
@@ -266,6 +322,7 @@ function buildContinuousOverlay(
   minTemp: number,
   maxTemp: number
 ) {
+  const LAPSE_RATE = 6.5 / 1000;
   const expected = gridSize * gridSize;
   if (samples.length !== expected) return null;
 
@@ -277,9 +334,12 @@ function buildContinuousOverlay(
   const ctx = canvas.getContext("2d");
   if (!ctx) return null;
 
-  const temps2d: number[][] = [];
+  const seaLevelTemps2d: number[][] = [];
+  const elevations2d: number[][] = [];
   for (let y = 0; y < gridSize; y++) {
-    temps2d.push(samples.slice(y * gridSize, (y + 1) * gridSize).map((s) => s.temperature));
+    const row = samples.slice(y * gridSize, (y + 1) * gridSize);
+    seaLevelTemps2d.push(row.map((s) => s.temperature + s.elevation * LAPSE_RATE));
+    elevations2d.push(row.map((s) => s.elevation));
   }
 
   const imageData = ctx.createImageData(width, height);
@@ -296,14 +356,15 @@ function buildContinuousOverlay(
       const x1 = Math.min(gridSize - 1, x0 + 1);
       const fx = gx - x0;
 
-      const t00 = temps2d[y0][x0];
-      const t10 = temps2d[y0][x1];
-      const t01 = temps2d[y1][x0];
-      const t11 = temps2d[y1][x1];
+      const sl00 = seaLevelTemps2d[y0][x0]; const sl10 = seaLevelTemps2d[y0][x1];
+      const sl01 = seaLevelTemps2d[y1][x0]; const sl11 = seaLevelTemps2d[y1][x1];
+      const seaLevelTemp = sl00 + (sl10 - sl00) * fx + (sl01 - sl00) * fy + (sl11 - sl10 - sl01 + sl00) * fx * fy;
 
-      const top = t00 + (t10 - t00) * fx;
-      const bottom = t01 + (t11 - t01) * fx;
-      const temp = top + (bottom - top) * fy;
+      const e00 = elevations2d[y0][x0]; const e10 = elevations2d[y0][x1];
+      const e01 = elevations2d[y1][x0]; const e11 = elevations2d[y1][x1];
+      const elev = e00 + (e10 - e00) * fx + (e01 - e00) * fy + (e11 - e10 - e01 + e00) * fx * fy;
+
+      const temp = seaLevelTemp - elev * LAPSE_RATE;
 
       const [r, g, b] = parseHslColor(colorFromTemperature(temp, minTemp, maxTemp));
       const idx = (py * width + px) * 4;
@@ -337,6 +398,8 @@ export default function ClimateMap({
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<{ min: number; max: number; avg: number; time: string } | null>(null);
+  const [citySource, setCitySource] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
 
   const fallbackBounds = mode === "czech" ? CZECH_BOUNDS : area.bounds;
   const boundsKey = useMemo(() => (
@@ -350,6 +413,7 @@ export default function ClimateMap({
       try {
         setLoading(true);
         setError(null);
+        setCitySource(null);
         const L = await loadLeaflet();
         if (cancelled || !mapHostRef.current) return;
 
@@ -360,6 +424,7 @@ export default function ClimateMap({
             preferCanvas: true,
           });
           mapRef.current.createPane("climatePane").style.zIndex = "350";
+          mapRef.current.createPane("cityPane").style.zIndex = "375";
           mapRef.current.createPane("maskPane").style.zIndex = "500";
           L.control.zoom({ position: "bottomright" }).addTo(mapRef.current);
           L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
@@ -372,6 +437,11 @@ export default function ClimateMap({
         const map = mapRef.current;
         layersRef.current.forEach((layer) => map.removeLayer(layer));
         layersRef.current = [];
+
+        {
+          const earlyParcel = L.polygon(area.points);
+          map.fitBounds(earlyParcel.getBounds().pad(0.6), { padding: [16, 16], maxZoom: 14 });
+        }
 
         let climateBounds = fallbackBounds;
         let czLayer: any = null;
@@ -405,6 +475,21 @@ export default function ClimateMap({
           smoothOverlay.options.pane = "climatePane";
           smoothOverlay.addTo(map);
           layersRef.current.push(smoothOverlay);
+        }
+
+        for (const city of CITY_THERMAL_OVERLAYS) {
+          if (areaIntersectsCity(area.bounds, city.bounds)) {
+            const { north, south, east, west } = city.bounds;
+            const imgUrl = buildArcGISExportUrl(city.serviceUrl, city.bounds);
+            const cityLayer = L.imageOverlay(imgUrl, [[south, west], [north, east]], {
+              opacity: 0.82,
+              interactive: false,
+              pane: "cityPane",
+            }).addTo(map);
+            layersRef.current.push(cityLayer);
+            setCitySource(`${city.labelCz} — ${city.source}`);
+            break;
+          }
         }
 
         if (mode === "czech" && czFeature) {
@@ -445,31 +530,20 @@ export default function ClimateMap({
         }).addTo(map);
         layersRef.current.push(parcel);
 
-        if (mode === "czech" && czLayer) {
-          const czBounds = czLayer.getBounds();
+        if (mode === "czech") {
+          const czBounds = czLayer
+            ? czLayer.getBounds()
+            : L.latLngBounds([[CZECH_BOUNDS.south, CZECH_BOUNDS.west], [CZECH_BOUNDS.north, CZECH_BOUNDS.east]]);
           map.setMaxBounds(czBounds.pad(0.08));
-          map.fitBounds(czBounds, { padding: [0, 0], maxZoom: 8 });
-          const fitZoom = map.getZoom();
-          map.setMinZoom(Math.max(4, fitZoom - 2));
-          map.setMaxZoom(Math.min(18, fitZoom + 5));
+          map.setMinZoom(4);
+          map.setMaxZoom(18);
           map.scrollWheelZoom.enable();
           map.doubleClickZoom.enable();
           map.touchZoom.enable();
           map.boxZoom.enable();
           map.keyboard.enable();
           if (map.tap) map.tap.enable();
-        } else if (mode === "czech") {
-          map.setMaxBounds([[CZECH_BOUNDS.south, CZECH_BOUNDS.west], [CZECH_BOUNDS.north, CZECH_BOUNDS.east]]);
-          map.fitBounds([[CZECH_BOUNDS.south, CZECH_BOUNDS.west], [CZECH_BOUNDS.north, CZECH_BOUNDS.east]], { padding: [0, 0], maxZoom: 8 });
-          const fitZoom = map.getZoom();
-          map.setMinZoom(Math.max(4, fitZoom - 2));
-          map.setMaxZoom(Math.min(18, fitZoom + 5));
-          map.scrollWheelZoom.enable();
-          map.doubleClickZoom.enable();
-          map.touchZoom.enable();
-          map.boxZoom.enable();
-          map.keyboard.enable();
-          if (map.tap) map.tap.enable();
+          map.fitBounds(parcel.getBounds().pad(0.6), { padding: [16, 16], maxZoom: 14 });
         } else {
           map.setMaxBounds(null);
           map.setMinZoom(1);
@@ -480,7 +554,6 @@ export default function ClimateMap({
           map.boxZoom.enable();
           map.keyboard.enable();
           if (map.tap) map.tap.enable();
-          map.fitBounds(parcel.getBounds().pad(0.6), { padding: [16, 16], maxZoom: 14 });
         }
       } catch (err) {
         if (cancelled) return;
@@ -496,7 +569,7 @@ export default function ClimateMap({
     return () => {
       cancelled = true;
     };
-  }, [area.points, fallbackBounds, boundsKey, mode]);
+  }, [area.points, fallbackBounds, boundsKey, mode, retryCount]);
 
   useEffect(() => {
     return () => {
@@ -530,10 +603,16 @@ export default function ClimateMap({
         )}
         {error && !loading && (
           <div style={{
-            position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center",
+            position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10,
             background: "#F4F5E0e0", color: "#7a3b3b", fontSize: 12, letterSpacing: "0.04em", textAlign: "center", padding: 12,
           }}>
-            {error}
+            <span>{error}</span>
+            <button
+              onClick={() => setRetryCount((c) => c + 1)}
+              style={{ fontSize: 11, letterSpacing: "0.06em", color: "#2e3a1f", background: "none", border: "1px solid #2e3a1f66", borderRadius: 3, padding: "4px 12px", cursor: "pointer", fontFamily: "inherit" }}
+            >
+              Zkusit znovu
+            </button>
           </div>
         )}
       </div>
@@ -543,6 +622,7 @@ export default function ClimateMap({
           <div style={{ fontSize: 11, color: "#2e3a1f77" }}>Průměr: <span style={{ color: "#2e3a1f", fontStyle: "italic" }}>{stats.avg.toFixed(1)} °C</span></div>
           <div style={{ fontSize: 11, color: "#2e3a1f77" }}>Max: <span style={{ color: "#2e3a1f", fontStyle: "italic" }}>{stats.max.toFixed(1)} °C</span></div>
           {stats.time && <div style={{ fontSize: 11, color: "#2e3a1f66" }}>Aktualizace: {stats.time.replace("T", " ")}</div>}
+          {citySource && <div style={{ fontSize: 11, color: "#2e3a1f66", width: "100%" }}>Detailní vrstva: {citySource}</div>}
         </div>
       )}
     </div>
