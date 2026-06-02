@@ -26,6 +26,7 @@ const CZECH_BOUNDS = {
   west: 12.05,
 };
 const CZECH_GEOJSON_URL = "https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson";
+let czFeaturePromise: Promise<any | null> | null = null;
 
 interface CityThermalOverlay {
   labelCz: string;
@@ -273,15 +274,13 @@ function featureToLatLngRings(feature: any): [number, number][][] {
 }
 
 async function loadCzechFeature(): Promise<any | null> {
-  try {
-    const res = await fetch(CZECH_GEOJSON_URL);
-    if (!res.ok) return null;
-    const json = await res.json();
-    const feature = json?.features?.find((f: any) => f?.properties?.ISO_A2 === "CZ");
-    return feature ?? null;
-  } catch {
-    return null;
+  if (!czFeaturePromise) {
+    czFeaturePromise = fetch(CZECH_GEOJSON_URL)
+      .then(res => (res.ok ? res.json() : null))
+      .then(json => json?.features?.find((f: any) => f?.properties?.ISO_A2 === "CZ") ?? null)
+      .catch(() => null);
   }
+  return czFeaturePromise;
 }
 
 function colorFromTemperature(temp: number, min: number, max: number): string {

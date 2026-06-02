@@ -17,12 +17,14 @@ interface SelectedArea {
 }
 
 function encodeHashPayload(payload: unknown): string {
-  return btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+  const bytes = new TextEncoder().encode(JSON.stringify(payload));
+  return btoa(Array.from(bytes, b => String.fromCharCode(b)).join(''));
 }
 
 function decodeHashPayload<T>(value: string): T | null {
   try {
-    return JSON.parse(decodeURIComponent(escape(atob(value)))) as T;
+    const bytes = Uint8Array.from(atob(value), c => c.charCodeAt(0));
+    return JSON.parse(new TextDecoder().decode(bytes)) as T;
   } catch {
     return null;
   }
@@ -166,6 +168,9 @@ const LANDCOVER_MAP: Record<string, { label: string; color: string }> = {
   sand:         { label: "Písek",         color: "#FFD54F" },
 };
 
+const landCoverCache = new Map<string, { key: string; label: string; color: string; pct: number }[]>();
+const adminUnitsCache = new Map<string, { label: string; value: string }[]>();
+
 function LandCoverSkeleton() {
   return (
     <div style={{ padding: "16px 20px" }} className="animate-pulse">
@@ -208,6 +213,9 @@ function LandCoverSummary({ area }: { area: SelectedArea }) {
     setLoading(true);
     setError(false);
     const { north, south, east, west } = area.bounds;
+    const cacheKey = `${south.toFixed(4)},${west.toFixed(4)},${north.toFixed(4)},${east.toFixed(4)}`;
+    const cachedItems = landCoverCache.get(cacheKey);
+    if (cachedItems) { setItems(cachedItems); setLoading(false); return; }
     const query = `[out:json][timeout:20];(way["landuse"](${south},${west},${north},${east});way["natural"~"^(wood|scrub|heath|grassland|wetland|water|beach|sand)$"](${south},${west},${north},${east});relation["landuse"](${south},${west},${north},${east}););out tags;`;
     fetch("https://overpass-api.de/api/interpreter", {
       method: "POST",
@@ -223,7 +231,7 @@ function LandCoverSummary({ area }: { area: SelectedArea }) {
           counts[key] = (counts[key] ?? 0) + 1;
         }
         const total = Object.values(counts).reduce((a, b) => a + b, 0);
-        if (total === 0) { setItems([]); setLoading(false); return; }
+        if (total === 0) { landCoverCache.set(cacheKey, []); setItems([]); setLoading(false); return; }
         const sorted = Object.entries(counts)
           .sort((a, b) => b[1] - a[1])
           .slice(0, 8)
@@ -233,6 +241,7 @@ function LandCoverSummary({ area }: { area: SelectedArea }) {
             color: LANDCOVER_MAP[key]?.color ?? "#2e3a1f44",
             pct: Math.round((count / total) * 100),
           }));
+        landCoverCache.set(cacheKey, sorted);
         setItems(sorted);
         setLoading(false);
       })
@@ -332,6 +341,9 @@ function AdminUnits({ area }: { area: SelectedArea }) {
     setError(false);
     const lat = ((area.bounds.north + area.bounds.south) / 2).toFixed(6);
     const lon = ((area.bounds.east + area.bounds.west) / 2).toFixed(6);
+    const cacheKey = `${lat},${lon}`;
+    const cachedLevels = adminUnitsCache.get(cacheKey);
+    if (cachedLevels) { setLevels(cachedLevels); setLoading(false); return; }
     fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&zoom=10&addressdetails=1`, {
       headers: { "Accept-Language": "cs" },
     })
@@ -343,6 +355,7 @@ function AdminUnits({ area }: { area: SelectedArea }) {
           { label: "Okres", value: a.county },
           { label: "Kraj",  value: a.state },
         ].filter((row): row is { label: string; value: string } => typeof row.value === "string");
+        adminUnitsCache.set(cacheKey, rows);
         setLevels(rows);
         setLoading(false);
       })

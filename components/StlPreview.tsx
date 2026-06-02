@@ -143,7 +143,6 @@ export default function StlPreview({
 
       if (mesh) {
         mesh.geometry.dispose();
-        (mesh.material as THREE.Material).dispose();
       }
       material.dispose();
 

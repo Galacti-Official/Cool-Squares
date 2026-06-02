@@ -20,7 +20,7 @@ const HERO_MODELS = [
     rotationPeriodMs: 7800,
   },
 ];
-const HERO_MODEL_SWITCH_INTERVAL_MS = 6500;
+const HERO_MODEL_SWITCH_INTERVAL_MS = 10000;
 
 export default function Hero() {
   const [activeModelIndex, setActiveModelIndex] = useState(0);

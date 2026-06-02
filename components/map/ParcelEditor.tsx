@@ -1673,7 +1673,8 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
       elements: geoElements,
     };
 
-    const b64 = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+    const bytes = new TextEncoder().encode(JSON.stringify(payload));
+    const b64 = btoa(Array.from(bytes, b => String.fromCharCode(b)).join(''));
     const shareUrl = `${window.location.origin}${window.location.pathname}#plan=${b64}`;
 
     navigator.clipboard.writeText(shareUrl).then(() => {
