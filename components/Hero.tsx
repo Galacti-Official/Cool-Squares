@@ -19,6 +19,11 @@ const HERO_MODELS = [
     modelPath: "/Zelena_Zastavka.glb",
     rotationPeriodMs: 7800,
   },
+  {
+    name: "Zastíněné parkovací místo",
+    modelPath: "/P.stl",
+    rotationPeriodMs: 8000,
+  },
 ];
 const HERO_MODEL_SWITCH_INTERVAL_MS = 10000;
 
