@@ -1033,12 +1033,19 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
       e.preventDefault();
       const rect = canvas!.getBoundingClientRect();
       const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
-      const [wx, wy] = screenToWorld(sx, sy);
-      const { angle } = vp.current;
-      const newZoom = Math.max(0.05, Math.min(100, vp.current.zoom * (e.deltaY < 0 ? 1.12 : 1 / 1.12)));
-      const c = Math.cos(angle), s = Math.sin(angle);
-      vp.current = { ...vp.current, zoom: newZoom, x: sx - (wx * newZoom * c - wy * newZoom * s), y: sy - (wx * newZoom * s + wy * newZoom * c) };
-      setZoomDisplay(Math.round(newZoom * 100));
+      if (e.ctrlKey || e.metaKey) {
+        // Pinch-to-zoom (touchpad) or Ctrl+scroll (mouse)
+        const [wx, wy] = screenToWorld(sx, sy);
+        const { angle } = vp.current;
+        const factor = Math.pow(0.99, e.deltaY);
+        const newZoom = Math.max(0.05, Math.min(100, vp.current.zoom * factor));
+        const c = Math.cos(angle), s = Math.sin(angle);
+        vp.current = { ...vp.current, zoom: newZoom, x: sx - (wx * newZoom * c - wy * newZoom * s), y: sy - (wx * newZoom * s + wy * newZoom * c) };
+        setZoomDisplay(Math.round(newZoom * 100));
+      } else {
+        // Two-finger scroll (touchpad) or scroll wheel → pan
+        vp.current = { ...vp.current, x: vp.current.x - e.deltaX, y: vp.current.y - e.deltaY };
+      }
     }
     canvas.addEventListener("wheel", onWheel, { passive: false });
     return () => canvas.removeEventListener("wheel", onWheel);
@@ -1449,7 +1456,7 @@ export default function ParcelEditor({ area, onBack }: { area: SelectedArea; onB
             )}
           </div>
           <div style={{ padding: "10px 12px", borderTop: "1.5px solid #2e3a1f11", fontSize: 10, color: "#2e3a1f44", lineHeight: 1.6 }}>
-            Přetáhněte pro umístění · Shift+klik pro vícenásobný výběr · Tažením v prázdném prostoru vyberete oblast · Kolečkem přiblížíte · Prostřední tlačítko nebo mezerník+tažení pro posun · [ ] pro otočení pohledu
+            Přetáhněte pro umístění · Shift+klik pro vícenásobný výběr · Tažením v prázdném prostoru vyberete oblast · Dvěma prsty posunete / kolečkem posunete · Ctrl+kolečko nebo pinch pro přiblížení · Mezerník+tažení pro posun · [ ] pro otočení pohledu
           </div>
         </aside>
 
