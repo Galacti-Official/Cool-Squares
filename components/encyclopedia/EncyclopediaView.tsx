@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ITEMS, CATEGORIES, type Item, type Category } from "./itemData";
+import { Search } from 'lucide-react';
 
 const COST_COLOR: Record<string, string> = {
   low: "bg-emerald-100 text-emerald-700",
@@ -209,13 +210,13 @@ function ItemCard({ item, onClick }: { item: Item; onClick: () => void }) {
 
       <div className="flex items-center gap-2 mt-3 flex-wrap">
         <span className={`${BADGE} ${COST_COLOR[item.cost]}`}>
-          {item.cost === "low" ? "💚" : item.cost === "medium" ? "🟡" : "🔴"} Cena: {priceLabel}
+          {item.cost === "low" ? "" : item.cost === "medium" ? "" : ""} Cena: {priceLabel}
         </span>
         <span className={`${BADGE} bg-fg text-text-mid`}>
-          🔧 Údržba: {MAINT_LABEL[item.maintenance]}
+          Údržba: {MAINT_LABEL[item.maintenance]}
         </span>
         {!item.waterNeeded && (
-          <span className={`${BADGE} bg-fg text-text-mid`}>💧 Bez potřeby vody</span>
+          <span className={`${BADGE} bg-fg text-text-mid`}>Bez potřeby vody</span>
         )}
       </div>
     </button>
@@ -383,13 +384,15 @@ export default function EncyclopediaView() {
 
         <div className="flex flex-col sm:flex-row gap-3 mb-6">
           <div className="relative flex-1">
-            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-light text-sm">🔍</span>
+            <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-light pointer-events-none">
+              <Search size={16} />
+            </span>
             <input
               type="text"
               placeholder="Hledat název, štítky, materiál, specifikace…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-9 pr-4 py-2.5 bg-bg border border-btn/40 rounded-full text-sm text-text placeholder-text-light focus:outline-none focus:border-btn focus:ring-2 focus:ring-btn/20"
+              className="w-full pl-10 pr-4 py-2.5 bg-bg border border-btn/40 rounded-full text-sm text-text placeholder-text-light focus:outline-none focus:border-btn focus:ring-2 focus:ring-btn/20"
             />
           </div>
 
@@ -425,7 +428,7 @@ export default function EncyclopediaView() {
 
         {filtered.length === 0 ? (
           <div className="text-center py-20 text-text-light">
-            <p className="text-4xl mb-3">🔍</p>
+            <Search size={40} className="mx-auto mb-4 opacity-40" />
             <p className="font-display text-xl">Žádné prvky neodpovídají vyhledávání</p>
           </div>
         ) : (

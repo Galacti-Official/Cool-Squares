@@ -6,6 +6,7 @@ import dynamic from "next/dynamic";
 import { ITEMS, type Item } from "../encyclopedia/itemData";
 import { formatAreaByMagnitude } from "./areaFormat";
 import ClimateMap from "./ClimateMap";
+import { ArrowLeft, ChevronDown, Monitor, Redo2, RotateCcw, RotateCw, Undo2 } from "lucide-react";
 
 const StlPreview = dynamic(() => import("../StlPreview"), { ssr: false });
 
@@ -49,6 +50,13 @@ interface Viewport {
   y: number;
   zoom: number;
   angle: number;
+}
+
+interface ParcelSavedState {
+  elements: PlacedElement[];
+  history: PlacedElement[][];
+  historyIndex: number;
+  vp: Viewport;
 }
 
 interface PlanStats {
@@ -642,7 +650,7 @@ function PlanSummaryBar({ stats, expanded, onToggle, area }: {
         </div>
         <div style={{ fontSize: 10, color: "#2e3a1f55", letterSpacing: "0.06em", display: "flex", alignItems: "center", gap: 4 }}>
           <span>{expanded ? "Skrýt" : "Podrobnosti"}</span>
-          <span style={{ fontSize: 12, display: "inline-block", transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.2s" }}>▾</span>
+          <ChevronDown size={12} style={{ display: "inline-block", transform: expanded ? "rotate(180deg)" : "none", transition: "transform 0.2s" }} />
         </div>
       </div>
 
@@ -699,7 +707,10 @@ function PlanSummaryBar({ stats, expanded, onToggle, area }: {
 }
 
 
-export default function ParcelEditor({ area, onBack, initialPlan }: { area: SelectedArea; onBack: () => void; initialPlan?: GeoElement[] }) {
+export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: SelectedArea[]; onBack: () => void; initialPlan?: GeoElement[] }) {
+  const [activeParcelIdx, setActiveParcelIdx] = useState(0);
+  const area = areas[activeParcelIdx];
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [elements, setElements] = useState<PlacedElement[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -753,6 +764,8 @@ export default function ParcelEditor({ area, onBack, initialPlan }: { area: Sele
   const initialPlanRef = useRef<GeoElement[] | undefined>(initialPlan);
   const initialPlanApplied = useRef(false);
   const toastTimeoutRef = useRef<number | null>(null);
+  const parcelSavedStatesRef = useRef<Map<number, ParcelSavedState>>(new Map());
+  const prevParcelIdxRef = useRef(0);
 
   useEffect(() => { elementsRef.current = elements; }, [elements]);
   useEffect(() => { selectedIdsRef.current = selectedIds; }, [selectedIds]);
@@ -763,6 +776,42 @@ export default function ParcelEditor({ area, onBack, initialPlan }: { area: Sele
       if (toastTimeoutRef.current !== null) window.clearTimeout(toastTimeoutRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    const prev = prevParcelIdxRef.current;
+    if (prev === activeParcelIdx) return;
+
+    // Save current parcel state before switching
+    parcelSavedStatesRef.current.set(prev, {
+      elements: [...elementsRef.current],
+      history: historyRef.current.map(h => [...h]),
+      historyIndex: historyIndexRef.current,
+      vp: { ...vp.current },
+    });
+
+    // Load or initialise state for new parcel
+    const saved = parcelSavedStatesRef.current.get(activeParcelIdx);
+    const newElements = saved ? saved.elements : [];
+    elementsRef.current = newElements;
+    setElements(newElements);
+    if (saved) {
+      historyRef.current = saved.history;
+      historyIndexRef.current = saved.historyIndex;
+      vp.current = saved.vp;
+      vpInitialised.current = true;
+      setCanUndo(saved.historyIndex > 0);
+      setCanRedo(saved.historyIndex < saved.history.length - 1);
+    } else {
+      historyRef.current = [[]];
+      historyIndexRef.current = 0;
+      vpInitialised.current = false;
+      setCanUndo(false);
+      setCanRedo(false);
+    }
+    setSelectedIds([]);
+    setHoveredId(null);
+    prevParcelIdxRef.current = activeParcelIdx;
+  }, [activeParcelIdx]);
 
 
   useEffect(() => {
@@ -1636,7 +1685,7 @@ export default function ParcelEditor({ area, onBack, initialPlan }: { area: Sele
   if (tooSmall) {
     return (
       <div style={{ position: "fixed", inset: 0, zIndex: 4000, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#F4F5E0", fontFamily: "'PT Sans', sans-serif", padding: 32, textAlign: "center" }}>
-        <div style={{ fontSize: 40, marginBottom: 20, opacity: 0.4 }}>🖥</div>
+        <div style={{ marginBottom: 20, opacity: 0.4, display: "flex", justifyContent: "center" }}><Monitor size={40} /></div>
         <h2 style={{ fontSize: 22, fontWeight: 400, color: "#2e3a1f", fontStyle: "italic", marginBottom: 10, lineHeight: 1.3 }}>Editor vyžaduje větší obrazovku</h2>
         <p style={{ fontSize: 13, color: "#2e3a1f77", maxWidth: 320, lineHeight: 1.6, marginBottom: 28 }}>
           Plánovač parcely je dostupný pouze na zařízeních se šířkou obrazovky alespoň 960 px. Otevřete jej na počítači nebo tabletu v režimu na šířku.
@@ -1654,10 +1703,12 @@ export default function ParcelEditor({ area, onBack, initialPlan }: { area: Sele
       <header style={{ height: 52, flexShrink: 0, borderBottom: "1.5px solid #2e3a1f22", display: "flex", alignItems: "center", background: "#F4F5E0" }}>
         <button onClick={onBack}
           style={{ height: "100%", padding: "0 20px", borderRight: "1.5px solid #2e3a1f22", background: "none", border: "none", cursor: "pointer", color: "#2e3a1f", fontSize: 13, fontFamily: "inherit", letterSpacing: "0.04em", display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 16 }}>←</span> Zpět
+          <ArrowLeft size={16} /> Zpět
         </button>
         <div style={{ padding: "0 20px", flex: 1, display: "flex", alignItems: "center", gap: 16 }}>
-          <span style={{ fontSize: 16, fontStyle: "italic", color: "#2e3a1f" }}>Editor parcely</span>
+          <span style={{ fontSize: 16, fontStyle: "italic", color: "#2e3a1f" }}>
+            {areas.length > 1 ? `Parcela ${activeParcelIdx + 1}` : "Editor parcely"}
+          </span>
           <span style={{ color: "#2e3a1f33" }}>·</span>
           <span style={{ fontSize: 12, color: "#2e3a1f66", letterSpacing: "0.04em" }}>
             {elements.length} {elements.length === 1 ? "prvek" : elements.length >= 2 && elements.length <= 4 ? "prvky" : "prvků"}
@@ -1670,20 +1721,20 @@ export default function ParcelEditor({ area, onBack, initialPlan }: { area: Sele
 
         <div style={{ display: "flex", alignItems: "center", height: "100%", borderLeft: "1.5px solid #2e3a1f22", borderRight: "1.5px solid #2e3a1f22" }}>
           <button title="Zpět (Ctrl+Z)" onClick={undo} disabled={!canUndo}
-            style={{ height: "100%", padding: "0 12px", background: "none", border: "none", cursor: canUndo ? "pointer" : "default", color: canUndo ? "#2e3a1f88" : "#2e3a1f28", fontSize: 15, fontFamily: "inherit" }}>↩</button>
+            style={{ height: "100%", padding: "0 12px", background: "none", border: "none", cursor: canUndo ? "pointer" : "default", color: canUndo ? "#2e3a1f88" : "#2e3a1f28", display: "flex", alignItems: "center", fontFamily: "inherit" }}><Undo2 size={15} /></button>
           <button title="Znovu (Ctrl+Shift+Z)" onClick={redo} disabled={!canRedo}
-            style={{ height: "100%", padding: "0 12px", background: "none", border: "none", cursor: canRedo ? "pointer" : "default", color: canRedo ? "#2e3a1f88" : "#2e3a1f28", fontSize: 15, fontFamily: "inherit" }}>↪</button>
+            style={{ height: "100%", padding: "0 12px", background: "none", border: "none", cursor: canRedo ? "pointer" : "default", color: canRedo ? "#2e3a1f88" : "#2e3a1f28", display: "flex", alignItems: "center", fontFamily: "inherit" }}><Redo2 size={15} /></button>
         </div>
 
         <div style={{ display: "flex", alignItems: "center", height: "100%", borderRight: "1.5px solid #2e3a1f22" }}>
           <button title="Otočit pohled o −15° ( [ )" onClick={() => rotateViewport(-15 * Math.PI / 180)}
-            style={{ height: "100%", padding: "0 12px", background: "none", border: "none", cursor: "pointer", color: "#2e3a1f88", fontSize: 14, fontFamily: "inherit" }}>↺</button>
+            style={{ height: "100%", padding: "0 12px", background: "none", border: "none", cursor: "pointer", color: "#2e3a1f88", display: "flex", alignItems: "center", fontFamily: "inherit" }}><RotateCcw size={15} /></button>
           <button title="Přizpůsobit parcelu na obrazovku ( F )" onClick={fitParcel}
             style={{ height: "100%", padding: "0 10px", background: "none", border: "none", cursor: "pointer", color: "#2e3a1f", fontSize: 11, fontFamily: "inherit", letterSpacing: "0.04em", minWidth: 52, textAlign: "center" }}>
             {zoomDisplay}%
           </button>
           <button title="Otočit pohled o +15° ( ] )" onClick={() => rotateViewport(15 * Math.PI / 180)}
-            style={{ height: "100%", padding: "0 12px", background: "none", border: "none", cursor: "pointer", color: "#2e3a1f88", fontSize: 14, fontFamily: "inherit" }}>↻</button>
+            style={{ height: "100%", padding: "0 12px", background: "none", border: "none", cursor: "pointer", color: "#2e3a1f88", display: "flex", alignItems: "center", fontFamily: "inherit" }}><RotateCw size={15} /></button>
         </div>
 
         <div style={{ display: "flex", alignItems: "center", height: "100%", borderRight: "1.5px solid #2e3a1f22", padding: "0 8px", gap: 6 }}>
@@ -1700,7 +1751,7 @@ export default function ParcelEditor({ area, onBack, initialPlan }: { area: Sele
             style={{ height: "100%", padding: "0 16px", background: "none", border: "none", borderRight: "1.5px solid #2e3a1f22", cursor: "pointer", color: "#2e3a1f77", fontSize: 12, fontFamily: "inherit", letterSpacing: "0.04em" }}>
             Vymazat vše
           </button>
-          <button onClick={exportPlan} style={{ height: "100%", padding: "0 20px", background: "none", border: "none", cursor: "pointer", color: "#2e3a1f", fontSize: 12, fontFamily: "inherit", letterSpacing: "0.04em" }}>
+          <button onClick={exportPlan} style={{ height: "100%", padding: "0 20px", background: "none", border: "none", borderRight: "1.5px solid #2e3a1f22", cursor: "pointer", color: "#2e3a1f", fontSize: 12, fontFamily: "inherit", letterSpacing: "0.04em" }}>
             Exportovat plán
           </button>
           <button onClick={sharePlan} style={{ height: "100%", padding: "0 20px", background: "none", border: "none", cursor: "pointer", color: "#2e3a1f", fontSize: 12, fontFamily: "inherit", letterSpacing: "0.04em" }}>
@@ -1708,6 +1759,32 @@ export default function ParcelEditor({ area, onBack, initialPlan }: { area: Sele
           </button>
         </div>
       </header>
+
+      {areas.length > 1 && (
+        <div style={{ height: 36, flexShrink: 0, borderBottom: "1.5px solid #2e3a1f22", display: "flex", alignItems: "center", background: "#F4F5E0", paddingLeft: 4 }}>
+          {areas.map((a, idx) => (
+            <button
+              key={idx}
+              onClick={() => setActiveParcelIdx(idx)}
+              style={{
+                height: "100%", padding: "0 16px",
+                background: "none", border: "none",
+                cursor: "pointer", fontFamily: "inherit",
+                fontSize: 12, letterSpacing: "0.06em",
+                color: activeParcelIdx === idx ? "#2e3a1f" : "#2e3a1f66",
+                borderBottom: activeParcelIdx === idx ? "2.5px solid #2e3a1f" : "2.5px solid transparent",
+                transition: "all 0.15s ease",
+                whiteSpace: "nowrap",
+              }}
+            >
+              Parcela {idx + 1}
+              <span style={{ marginLeft: 6, fontSize: 11, fontStyle: "italic", opacity: 0.7 }}>
+                {formatAreaByMagnitude(a.areaSqKm)}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
 
       <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
 

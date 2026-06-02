@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import ParcelEditor, { type GeoElement } from "./ParcelEditor";
 import { formatAreaByMagnitude, formatDistanceByMagnitude } from "./areaFormat";
 import ClimateMap from "./ClimateMap";
 import Image from "next/image";
+import { ArrowLeft, LayoutGrid, Thermometer, X, Pencil, type LucideIcon } from "lucide-react";
 
 type Mode = "idle" | "drawing";
 type AppPage = "map" | "results" | "editor";
@@ -181,27 +182,6 @@ function LandCoverSkeleton() {
   );
 }
 
-function ElevationSkeleton() {
-  return (
-    <div style={{ padding: "16px 20px" }} className="animate-pulse">
-      <div style={{ width: "100%", height: 72, borderRadius: 3, overflow: "hidden", marginBottom: 12 }}>
-        <svg viewBox="0 0 600 72" style={{ width: "100%", height: "100%", display: "block" }} preserveAspectRatio="none">
-          <path d="M0,62 C60,58 130,32 200,36 C270,40 310,18 370,22 C430,26 480,44 530,38 C565,34 590,46 600,52 L600,72 L0,72 Z"
-            fill="#2e3a1f14" />
-        </svg>
-      </div>
-      <div style={{ display: "flex", gap: 20 }}>
-        {[48, 56, 48, 44].map((w, i) => (
-          <div key={i} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <div style={{ width: 30, height: 7, borderRadius: 2, background: "#2e3a1f10" }} />
-            <div style={{ width: w, height: 12, borderRadius: 2, background: "#2e3a1f18" }} />
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 function AdminSkeleton() {
   return (
     <div style={{ padding: "16px 20px", display: "flex", alignItems: "center", gap: 6 }} className="animate-pulse">
@@ -224,6 +204,9 @@ function LandCoverSummary({ area }: { area: SelectedArea }) {
   const [error, setError] = useState(false);
 
   useEffect(() => {
+    setItems(null);
+    setLoading(true);
+    setError(false);
     const { north, south, east, west } = area.bounds;
     const query = `[out:json][timeout:20];(way["landuse"](${south},${west},${north},${east});way["natural"~"^(wood|scrub|heath|grassland|wetland|water|beach|sand)$"](${south},${west},${north},${east});relation["landuse"](${south},${west},${north},${east}););out tags;`;
     fetch("https://overpass-api.de/api/interpreter", {
@@ -254,7 +237,7 @@ function LandCoverSummary({ area }: { area: SelectedArea }) {
         setLoading(false);
       })
       .catch(() => { setError(true); setLoading(false); });
-  }, []);
+  }, [area]);
 
   return (
     <div style={{ padding: "16px 20px" }}>
@@ -284,83 +267,15 @@ function LandCoverSummary({ area }: { area: SelectedArea }) {
   );
 }
 
-function ElevationProfile({ area }: { area: SelectedArea }) {
-  const N = 24;
-  const [elevations, setElevations] = useState<number[] | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
-
-  useEffect(() => {
-    const { north, south, east, west } = area.bounds;
-    const lat = ((north + south) / 2).toFixed(6);
-    const locations = Array.from({ length: N }, (_, i) => {
-      const lng = (west + (east - west) * (i / (N - 1))).toFixed(6);
-      return `${lat},${lng}`;
-    }).join("|");
-    fetch(`https://api.opentopodata.org/v1/eudem25m?locations=${locations}`)
-      .then(r => r.json())
-      .then(data => {
-        if (data.status !== "OK") throw new Error();
-        const elev = (data.results as any[])
-          .map((r: any) => r.elevation)
-          .filter((e: any): e is number => typeof e === "number");
-        setElevations(elev);
-        setLoading(false);
-      })
-      .catch(() => { setError(true); setLoading(false); });
-  }, []);
-
-  if (loading) return <ElevationSkeleton />;
-  if (error || !elevations || elevations.length < 2) return <div style={{ padding: "16px 20px", fontSize: 12, color: "#2e3a1f44", fontStyle: "italic" }}>Data nejsou dostupná</div>;
-
-  const minE = Math.min(...elevations);
-  const maxE = Math.max(...elevations);
-  const avgE = Math.round(elevations.reduce((a, b) => a + b, 0) / elevations.length);
-  const range = maxE - minE || 1;
-
-  const W = 600, H = 72, PX = 2, PY = 6;
-  const pts = elevations.map((e, i) => [
-    PX + (i / (elevations.length - 1)) * (W - PX * 2),
-    PY + (1 - (e - minE) / range) * (H - PY * 2),
-  ] as [number, number]);
-  const lineD = "M" + pts.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(" L");
-  const areaD = `${lineD} L${(W - PX).toFixed(1)},${H} L${PX},${H} Z`;
-
-  return (
-    <div style={{ padding: "16px 20px" }}>
-      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: 72, display: "block", marginBottom: 12 }} preserveAspectRatio="none">
-        <defs>
-          <linearGradient id="elevGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#4A7C59" stopOpacity="0.35" />
-            <stop offset="100%" stopColor="#4A7C59" stopOpacity="0.04" />
-          </linearGradient>
-        </defs>
-        <path d={areaD} fill="url(#elevGrad)" />
-        <path d={lineD} fill="none" stroke="#4A7C59" strokeWidth="1.8" strokeLinejoin="round" />
-      </svg>
-      <div style={{ display: "flex", gap: 20 }}>
-        {[
-          { label: "Min",    value: `${Math.round(minE)} m n.m.` },
-          { label: "Průměr", value: `${avgE} m n.m.` },
-          { label: "Max",    value: `${Math.round(maxE)} m n.m.` },
-          { label: "Rozsah", value: `${Math.round(range)} m` },
-        ].map(({ label, value }) => (
-          <div key={label}>
-            <div style={{ fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", color: "#2e3a1f55", marginBottom: 2 }}>{label}</div>
-            <div style={{ fontSize: 13, color: "#2e3a1f", fontStyle: "italic" }}>{value}</div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 function AdminUnits({ area }: { area: SelectedArea }) {
   const [levels, setLevels] = useState<{ label: string; value: string }[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
   useEffect(() => {
+    setLevels(null);
+    setLoading(true);
+    setError(false);
     const lat = ((area.bounds.north + area.bounds.south) / 2).toFixed(6);
     const lon = ((area.bounds.east + area.bounds.west) / 2).toFixed(6);
     fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&zoom=10&addressdetails=1`, {
@@ -378,44 +293,103 @@ function AdminUnits({ area }: { area: SelectedArea }) {
         setLoading(false);
       })
       .catch(() => { setError(true); setLoading(false); });
-  }, []);
+  }, [area]);
+
+  if (loading) return <AdminSkeleton />;
+  if (error) return <div style={{ padding: "16px 20px", fontSize: 12, color: "#2e3a1f44", fontStyle: "italic" }}>Data nejsou dostupná</div>;
 
   return (
     <div style={{ padding: "16px 20px" }}>
-      {loading && <AdminSkeleton />}
-      {error && <span style={{ fontSize: 12, color: "#2e3a1f44", fontStyle: "italic" }}>Data nejsou dostupná</span>}
-      {levels && (
-        <div style={{ display: "flex", alignItems: "flex-start", flexWrap: "wrap", gap: 4 }}>
-          {levels.map(({ label, value }, i) => (
-            <div key={label} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              {i > 0 && <span style={{ color: "#2e3a1f33", fontSize: 14, lineHeight: 1, marginRight: 2 }}>›</span>}
-              <div>
-                <div style={{ fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", color: "#2e3a1f55", marginBottom: 1 }}>{label}</div>
-                <div style={{ fontSize: 13, color: "#2e3a1f", fontStyle: "italic" }}>{value}</div>
-              </div>
+      <div style={{ display: "flex", alignItems: "flex-start", flexWrap: "wrap", gap: 4 }}>
+        {(levels ?? []).map(({ label, value }, i) => (
+          <div key={label} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            {i > 0 && <span style={{ color: "#2e3a1f33", fontSize: 14, lineHeight: 1, marginRight: 2 }}>›</span>}
+            <div>
+              <div style={{ fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", color: "#2e3a1f55", marginBottom: 1 }}>{label}</div>
+              <div style={{ fontSize: 13, color: "#2e3a1f", fontStyle: "italic" }}>{value}</div>
             </div>
-          ))}
-        </div>
-      )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
 
 
-const NAV_ITEMS = [
-  { id: "overview", label: "Přehled",        icon: "◈" },
-  { id: "climate",  label: "Klima",          icon: "◌" },
+const NAV_ITEMS: { id: string; label: string; Icon: LucideIcon }[] = [
+  { id: "overview", label: "Přehled", Icon: LayoutGrid },
+  { id: "climate",  label: "Klima",   Icon: Thermometer },
 ];
 
-function ResultsPage({
-  area, onBack, onOpenEditor,
+function ParcelChoiceDialog({
+  parcelIndex, area, onContinue, onAddAnother,
 }: {
-  area: SelectedArea; onBack: () => void; onOpenEditor: () => void;
+  parcelIndex: number; area: SelectedArea; onContinue: () => void; onAddAnother: () => void;
 }) {
+  return (
+    <div
+      className="absolute inset-0 z-[2500] flex items-end sm:items-center justify-center"
+      style={{ background: "rgba(244,245,224,0.4)", backdropFilter: "blur(2px)" }}
+    >
+      <div style={{
+        background: "#F4F5E0", border: "1.5px solid #2e3a1f22", borderRadius: 12,
+        padding: "20px 24px", maxWidth: 360, width: "calc(100% - 40px)",
+        boxShadow: "0 8px 40px #0003",
+        fontFamily: "'PT Sans', sans-serif",
+        marginBottom: 24,
+      }}>
+        <div style={{ fontSize: 10, letterSpacing: "0.14em", textTransform: "uppercase", color: "#2e3a1f66", marginBottom: 3 }}>
+          Parcela {parcelIndex} vybrána
+        </div>
+        <div style={{ fontSize: 18, color: "#2e3a1f", fontStyle: "italic", marginBottom: 18 }}>
+          {formatAreaByMagnitude(area.areaSqKm)}
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            onClick={onAddAnother}
+            style={{
+              flex: 1, padding: "10px 14px", background: "none",
+              border: "1.5px solid #2e3a1f33", borderRadius: 8,
+              cursor: "pointer", fontFamily: "inherit", fontSize: 13,
+              color: "#2e3a1f88", letterSpacing: "0.04em",
+            }}
+          >
+            + Přidat parcelu
+          </button>
+          <button
+            onClick={onContinue}
+            style={{
+              flex: 1, padding: "10px 14px", background: "#2e3a1f",
+              border: "none", borderRadius: 8,
+              cursor: "pointer", fontFamily: "inherit", fontSize: 13,
+              color: "#F4F5E0", letterSpacing: "0.04em",
+            }}
+          >
+            Výsledky →
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ResultsPage({
+  areas, onBack, onOpenEditor,
+}: {
+  areas: SelectedArea[]; onBack: () => void; onOpenEditor: () => void;
+}) {
+  const [activeParcelIdx, setActiveParcelIdx] = useState(0);
   const [activeTab, setActiveTab] = useState("overview");
   const [visible, setVisible] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const toastTimeoutRef = useRef<number | null>(null);
+  const [mountedParcels, setMountedParcels] = useState<Set<number>>(() => new Set([0]));
+
+  const area = areas[Math.min(activeParcelIdx, areas.length - 1)];
+
+  useEffect(() => {
+    setMountedParcels(prev => { const s = new Set(prev); s.add(activeParcelIdx); return s; });
+  }, [activeParcelIdx]);
 
   useEffect(() => {
     const t = setTimeout(() => setVisible(true), 40);
@@ -439,21 +413,14 @@ function ResultsPage({
 
   function shareSummary() {
     const payload = {
-      v: 1,
-      area: serializeArea(area),
+      v: 2,
+      areas: areas.map(serializeArea),
     };
     const shareUrl = `${window.location.origin}${window.location.pathname}#summary=${encodeHashPayload(payload)}`;
-
     navigator.clipboard.writeText(shareUrl).then(() => {
       showToast("Odkaz zkopírován do schránky");
     });
   }
-
-  const { bounds, areaSqKm, points } = area;
-  const centerLat = ((bounds.north + bounds.south) / 2).toFixed(4);
-  const centerLng = ((bounds.east + bounds.west) / 2).toFixed(4);
-  const widthKm = Math.abs(((bounds.east - bounds.west) * Math.PI * 6371 * Math.cos((((bounds.north + bounds.south) / 2) * Math.PI) / 180)) / 180);
-  const heightKm = Math.abs(((bounds.north - bounds.south) * Math.PI * 6371) / 180);
 
   return (
     <div
@@ -469,15 +436,17 @@ function ResultsPage({
       {/* Header */}
       <header className="flex items-center flex-shrink-0" style={{ borderBottom: "1.5px solid #2e3a1f22", background: "#F4F5E0", height: 56 }}>
         <button onClick={onBack} className="flex items-center gap-2 h-full px-4 sm:px-5 shrink-0" style={{ background: "none", border: "none", borderRight: "1.5px solid #2e3a1f22", cursor: "pointer", color: "#2e3a1f", fontSize: 13, fontFamily: "inherit", letterSpacing: "0.04em" }}>
-          <span style={{ fontSize: 17, lineHeight: 1 }}>←</span>
+          <ArrowLeft size={17} />
           <span className="hidden sm:inline">Zpět na mapu</span>
         </button>
         <div className="flex-1 px-3 sm:px-6 flex items-center gap-2 overflow-hidden min-w-0">
-          <span className="hidden sm:inline" style={{ fontSize: 11, letterSpacing: "0.12em", color: "#2e3a1f88", textTransform: "uppercase", whiteSpace: "nowrap" }}>Vybraná oblast</span>
+          <span className="hidden sm:inline" style={{ fontSize: 11, letterSpacing: "0.12em", color: "#2e3a1f88", textTransform: "uppercase", whiteSpace: "nowrap" }}>
+            {areas.length > 1 ? `Parcela ${activeParcelIdx + 1} z ${areas.length}` : "Vybraná oblast"}
+          </span>
           <span className="hidden sm:inline" style={{ color: "#2e3a1f44", fontSize: 11 }}>·</span>
-          <span className="truncate" style={{ fontSize: 13, color: "#2e3a1f", fontStyle: "italic" }}>{formatAreaByMagnitude(areaSqKm)}</span>
+          <span className="truncate" style={{ fontSize: 13, color: "#2e3a1f", fontStyle: "italic" }}>{formatAreaByMagnitude(area.areaSqKm)}</span>
           <span className="hidden sm:inline" style={{ color: "#2e3a1f44", fontSize: 11 }}>·</span>
-          <span className="hidden sm:inline" style={{ fontSize: 13, color: "#2e3a1f99", whiteSpace: "nowrap" }}>{points.length} vrcholů</span>
+          <span className="hidden sm:inline" style={{ fontSize: 13, color: "#2e3a1f99", whiteSpace: "nowrap" }}>{area.points.length} vrcholů</span>
         </div>
         <div className="flex items-center h-full shrink-0" style={{ borderLeft: "1.5px solid #2e3a1f22" }}>
           {["Sdílet"].map((label) => (
@@ -492,6 +461,32 @@ function ResultsPage({
         </div>
       </header>
 
+      {/* Parcel tabs — only when multiple parcels selected */}
+      {areas.length > 1 && (
+        <div className="flex flex-shrink-0" style={{ borderBottom: "1.5px solid #2e3a1f22", background: "#F4F5E0", paddingLeft: 4 }}>
+          {areas.map((a, idx) => (
+            <button
+              key={idx}
+              onClick={() => setActiveParcelIdx(idx)}
+              style={{
+                padding: "8px 18px",
+                background: "none", border: "none", cursor: "pointer",
+                fontFamily: "inherit", fontSize: 12, letterSpacing: "0.06em",
+                color: activeParcelIdx === idx ? "#2e3a1f" : "#2e3a1f66",
+                borderBottom: activeParcelIdx === idx ? "2.5px solid #2e3a1f" : "2.5px solid transparent",
+                transition: "all 0.15s ease",
+                whiteSpace: "nowrap",
+              }}
+            >
+              Parcela {idx + 1}
+              <span style={{ marginLeft: 6, fontSize: 11, fontStyle: "italic", opacity: 0.7 }}>
+                {formatAreaByMagnitude(a.areaSqKm)}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row flex-1 overflow-hidden">
         {/* Mobile: horizontal tab bar */}
         <nav className="sm:hidden flex flex-shrink-0" style={{ borderBottom: "1.5px solid #2e3a1f22", background: "#F4F5E0" }}>
@@ -499,7 +494,7 @@ function ResultsPage({
             <button key={item.id} onClick={() => setActiveTab(item.id)}
               className="flex-1 flex items-center justify-center gap-2 py-3"
               style={{ background: "none", border: "none", cursor: "pointer", fontFamily: "inherit", fontSize: 13, letterSpacing: "0.04em", color: activeTab === item.id ? "#2e3a1f" : "#2e3a1f66", borderBottom: activeTab === item.id ? "2.5px solid #2e3a1f" : "2.5px solid transparent", transition: "all 0.15s ease" }}>
-              <span style={{ fontSize: 15, opacity: activeTab === item.id ? 1 : 0.5 }}>{item.icon}</span>
+              <item.Icon size={15} style={{ opacity: activeTab === item.id ? 1 : 0.5 }} />
               {item.label}
             </button>
           ))}
@@ -510,72 +505,86 @@ function ResultsPage({
           {NAV_ITEMS.map((item) => (
             <button key={item.id} onClick={() => setActiveTab(item.id)}
               style={{ display: "flex", alignItems: "center", gap: 12, padding: "11px 24px", background: "none", border: "none", cursor: "pointer", textAlign: "left", fontFamily: "inherit", fontSize: 13, letterSpacing: "0.04em", color: activeTab === item.id ? "#2e3a1f" : "#2e3a1f66", borderLeft: activeTab === item.id ? "2.5px solid #2e3a1f" : "2.5px solid transparent", transition: "all 0.15s ease" }}>
-              <span style={{ fontSize: 15, opacity: activeTab === item.id ? 1 : 0.5 }}>{item.icon}</span>
+              <item.Icon size={15} style={{ opacity: activeTab === item.id ? 1 : 0.5 }} />
               {item.label}
             </button>
           ))}
         </nav>
 
         <main className="flex-1 overflow-auto p-4 sm:p-8 md:px-10">
-          {activeTab === "overview" && (
-            <div style={{ maxWidth: 820 }}>
-              <h1 style={{ fontSize: 28, fontWeight: 400, color: "#2e3a1f", marginBottom: 6, lineHeight: 1.2, fontStyle: "italic" }}>Vlastní oblast</h1>
-              <p style={{ fontSize: 13, color: "#2e3a1f77", marginBottom: 24, letterSpacing: "0.04em" }}>
-                Nakresleno v České republice · {new Date().toLocaleDateString("cs-CZ", { day: "numeric", month: "long", year: "numeric" })}
-              </p>
-              <div className="flex flex-col sm:flex-row gap-4 sm:gap-6 mb-8">
-                <div className="w-full sm:w-[280px] lg:w-[320px] h-[180px] sm:h-[220px] flex-shrink-0" style={{ border: "1.5px solid #2e3a1f22", borderRadius: 4, overflow: "hidden" }}>
-                  <MiniMap area={area} />
-                </div>
-                <div className="flex-1" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1, background: "#2e3a1f18", border: "1.5px solid #2e3a1f22", borderRadius: 4, overflow: "hidden" }}>
+          {areas.map((a, idx) => {
+            if (!mountedParcels.has(idx)) return null;
+            const isActive = idx === activeParcelIdx;
+            const { bounds: b, areaSqKm: aSqKm, points: aPts } = a;
+            const aCenterLat = ((b.north + b.south) / 2).toFixed(4);
+            const aCenterLng = ((b.east + b.west) / 2).toFixed(4);
+            const aWidthKm = Math.abs(((b.east - b.west) * Math.PI * 6371 * Math.cos((((b.north + b.south) / 2) * Math.PI) / 180)) / 180);
+            const aHeightKm = Math.abs(((b.north - b.south) * Math.PI * 6371) / 180);
+            return (
+              <div key={idx} style={{ display: isActive ? undefined : "none" }}>
+                <div style={{ maxWidth: 820, display: activeTab === "overview" ? undefined : "none" }}>
+                  <h1 style={{ fontSize: 28, fontWeight: 400, color: "#2e3a1f", marginBottom: 6, lineHeight: 1.2, fontStyle: "italic" }}>
+                    {areas.length > 1 ? `Parcela ${idx + 1}` : "Vlastní oblast"}
+                  </h1>
+                  <p style={{ fontSize: 13, color: "#2e3a1f77", marginBottom: 24, letterSpacing: "0.04em" }}>
+                    Nakresleno v České republice · {new Date().toLocaleDateString("cs-CZ", { day: "numeric", month: "long", year: "numeric" })}
+                  </p>
+                  <div className="flex flex-col sm:flex-row gap-4 sm:gap-6 mb-8">
+                    <div className="w-full sm:w-[280px] lg:w-[320px] h-[180px] sm:h-[220px] flex-shrink-0" style={{ border: "1.5px solid #2e3a1f22", borderRadius: 4, overflow: "hidden" }}>
+                      <MiniMap area={a} />
+                    </div>
+                    <div className="flex-1" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1, background: "#2e3a1f18", border: "1.5px solid #2e3a1f22", borderRadius: 4, overflow: "hidden" }}>
+                      {[
+                        { label: "Celková plocha", value: formatAreaByMagnitude(aSqKm) },
+                        { label: "Vrcholy",         value: aPts.length },
+                        { label: "Šířka",           value: formatDistanceByMagnitude(aWidthKm) },
+                        { label: "Výška",           value: formatDistanceByMagnitude(aHeightKm) },
+                        { label: "Střed. šířka",    value: `${aCenterLat}° N` },
+                        { label: "Střed. délka",    value: `${aCenterLng}° E` },
+                      ].map(({ label, value }) => (
+                        <div key={label} style={{ background: "#F4F5E0", padding: "12px 16px" }}>
+                          <div style={{ fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "#2e3a1f66", marginBottom: 4 }}>{label}</div>
+                          <div style={{ fontSize: 18, color: "#2e3a1f", fontStyle: "italic" }}>{value}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                   {[
-                    { label: "Celková plocha", value: formatAreaByMagnitude(areaSqKm) },
-                    { label: "Vrcholy",         value: points.length },
-                    { label: "Šířka",           value: formatDistanceByMagnitude(widthKm) },
-                    { label: "Výška",           value: formatDistanceByMagnitude(heightKm) },
-                    { label: "Střed. šířka",    value: `${centerLat}° N` },
-                    { label: "Střed. délka",    value: `${centerLng}° E` },
-                  ].map(({ label, value }) => (
-                    <div key={label} style={{ background: "#F4F5E0", padding: "12px 16px" }}>
-                      <div style={{ fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "#2e3a1f66", marginBottom: 4 }}>{label}</div>
-                      <div style={{ fontSize: 18, color: "#2e3a1f", fontStyle: "italic" }}>{value}</div>
+                    { title: "Souhrn pokryvu půdy", content: <LandCoverSummary area={a} /> },
+                    { title: "Správní celky",       content: <AdminUnits area={a} /> },
+                  ].map(({ title, content }) => (
+                    <div key={title} style={{ border: "1.5px solid #2e3a1f22", borderRadius: 4, marginBottom: 16, overflow: "hidden" }}>
+                      <div style={{ padding: "14px 20px", borderBottom: "1.5px solid #2e3a1f22" }}>
+                        <span style={{ fontSize: 13, color: "#2e3a1f", letterSpacing: "0.04em" }}>{title}</span>
+                      </div>
+                      {content}
                     </div>
                   ))}
                 </div>
-              </div>
-              {[
-                { title: "Souhrn pokryvu půdy", content: <LandCoverSummary area={area} /> },
-                { title: "Výškový profil",      content: <ElevationProfile area={area} /> },
-                { title: "Správní celky",       content: <AdminUnits area={area} /> },
-              ].map(({ title, content }) => (
-                <div key={title} style={{ border: "1.5px solid #2e3a1f22", borderRadius: 4, marginBottom: 16, overflow: "hidden" }}>
-                  <div style={{ padding: "14px 20px", borderBottom: "1.5px solid #2e3a1f22" }}>
-                    <span style={{ fontSize: 13, color: "#2e3a1f", letterSpacing: "0.04em" }}>{title}</span>
+                {isActive && activeTab === "climate" && (
+                  <div style={{ maxWidth: 900 }}>
+                    <h1 style={{ fontSize: 28, fontWeight: 400, color: "#2e3a1f", marginBottom: 6, lineHeight: 1.2, fontStyle: "italic" }}>Klima</h1>
+                    <p style={{ fontSize: 13, color: "#2e3a1f77", marginBottom: 20, letterSpacing: "0.04em" }}>
+                      Aktuální teplotní pole v okolí vybrané parcely (zdroj: Open-Meteo).
+                    </p>
+                    <ClimateMap area={a} height={360} mode="czech" />
                   </div>
-                  {content}
-                </div>
-              ))}
-            </div>
-          )}
-          {activeTab === "climate" && (
-            <div style={{ maxWidth: 900 }}>
-              <h1 style={{ fontSize: 28, fontWeight: 400, color: "#2e3a1f", marginBottom: 6, lineHeight: 1.2, fontStyle: "italic" }}>Klima</h1>
-              <p style={{ fontSize: 13, color: "#2e3a1f77", marginBottom: 20, letterSpacing: "0.04em" }}>
-                Aktuální teplotní pole v okolí vybrané parcely (zdroj: Open-Meteo).
-              </p>
-              <ClimateMap area={area} height={360} mode="czech" />
-            </div>
-          )}
-          {activeTab !== "overview" && activeTab !== "climate" && (
-            <div style={{ maxWidth: 820 }}>
-              <h1 style={{ fontSize: 28, fontWeight: 400, color: "#2e3a1f", marginBottom: 6, lineHeight: 1.2, fontStyle: "italic" }}>{NAV_ITEMS.find(n => n.id === activeTab)?.label}</h1>
-              <p style={{ fontSize: 13, color: "#2e3a1f77", marginBottom: 36, letterSpacing: "0.04em" }}>Tato sekce se připravuje.</p>
-              <div style={{ border: "1.5px dashed #2e3a1f33", borderRadius: 4, padding: "60px 40px", textAlign: "center" }}>
-                <div style={{ fontSize: 32, marginBottom: 12, opacity: 0.3 }}>{NAV_ITEMS.find(n => n.id === activeTab)?.icon}</div>
-                <p style={{ fontSize: 14, color: "#2e3a1f55", fontStyle: "italic" }}>Data sekce {NAV_ITEMS.find(n => n.id === activeTab)?.label} již brzy</p>
+                )}
+                {isActive && activeTab !== "overview" && activeTab !== "climate" && (
+                  <div style={{ maxWidth: 820 }}>
+                    <h1 style={{ fontSize: 28, fontWeight: 400, color: "#2e3a1f", marginBottom: 6, lineHeight: 1.2, fontStyle: "italic" }}>{NAV_ITEMS.find(n => n.id === activeTab)?.label}</h1>
+                    <p style={{ fontSize: 13, color: "#2e3a1f77", marginBottom: 36, letterSpacing: "0.04em" }}>Tato sekce se připravuje.</p>
+                    <div style={{ border: "1.5px dashed #2e3a1f33", borderRadius: 4, padding: "60px 40px", textAlign: "center" }}>
+                      <div style={{ marginBottom: 12, opacity: 0.3, display: "flex", justifyContent: "center" }}>
+                      {(() => { const n = NAV_ITEMS.find(x => x.id === activeTab); return n ? <n.Icon size={32} /> : null; })()}
+                    </div>
+                      <p style={{ fontSize: 14, color: "#2e3a1f55", fontStyle: "italic" }}>Data sekce {NAV_ITEMS.find(n => n.id === activeTab)?.label} již brzy</p>
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
-          )}
+            );
+          })}
         </main>
       </div>
 
@@ -594,304 +603,347 @@ function ResultsPage({
 }
 
 
-function MapView({ onAreaSelected }: { onAreaSelected: (area: SelectedArea) => void }) {
-  const LIGHT_TILES = "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
-  const SATELLITE_TILES = "https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}";
+const MapView = forwardRef<{ startNewDrawing: () => void }, { onAreaSelected: (area: SelectedArea) => void }>(
+  function MapView({ onAreaSelected }, ref) {
+    const LIGHT_TILES = "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
+    const SATELLITE_TILES = "https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}";
 
-  const mapRef = useRef<HTMLDivElement>(null);
-  const leafletMapRef = useRef<any>(null);
-  const czGeoJsonRef = useRef<any>(null);
-  const bgLayerRef = useRef<any>(null);
-  const clipLayerRef = useRef<any>(null);
-  const [mapReady, setMapReady] = useState(false);
-  const [mapStyle, setMapStyle] = useState<"light" | "satellite">("light");
-  const [mode, setMode] = useState<Mode>("idle");
-  const [pointCount, setPointCount] = useState(0);
-  const [invalidMsg, setInvalidMsg] = useState<string | null>(null);
+    const mapRef = useRef<HTMLDivElement>(null);
+    const leafletMapRef = useRef<any>(null);
+    const czGeoJsonRef = useRef<any>(null);
+    const bgLayerRef = useRef<any>(null);
+    const clipLayerRef = useRef<any>(null);
+    const [mapReady, setMapReady] = useState(false);
+    const [mapStyle, setMapStyle] = useState<"light" | "satellite">("light");
+    const [mode, setMode] = useState<Mode>("idle");
+    const [pointCount, setPointCount] = useState(0);
+    const [invalidMsg, setInvalidMsg] = useState<string | null>(null);
 
-  const pointsRef = useRef<[number, number][]>([]);
-  const tempMarkersRef = useRef<any[]>([]);
-  const tempPolylineRef = useRef<any>(null);
-  const polygonRef = useRef<any>(null);
-  const maskRef = useRef<any>(null);
-  const modeRef = useRef<Mode>("idle");
-  const closingRef = useRef(false);
+    const pointsRef = useRef<[number, number][]>([]);
+    const tempMarkersRef = useRef<any[]>([]);
+    const tempPolylineRef = useRef<any>(null);
+    const finalizedPolygonLayersRef = useRef<any[]>([]);
+    const combinedMaskRef = useRef<any>(null);
+    const finalizedAreasRef = useRef<SelectedArea[]>([]);
+    const modeRef = useRef<Mode>("idle");
+    const closingRef = useRef(false);
 
-  useEffect(() => { modeRef.current = mode; }, [mode]);
+    useImperativeHandle(ref, () => ({
+      startNewDrawing() {
+        clearInProgress();
+        const map = leafletMapRef.current;
+        if (map && combinedMaskRef.current) {
+          map.removeLayer(combinedMaskRef.current);
+          combinedMaskRef.current = null;
+        }
+        setMode("drawing");
+      },
+    }));
 
-  useEffect(() => {
-    if (typeof window === "undefined" || leafletMapRef.current) return;
+    useEffect(() => { modeRef.current = mode; }, [mode]);
 
-    const link = document.createElement("link");
-    link.rel = "stylesheet";
-    link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
-    document.head.appendChild(link);
+    useEffect(() => {
+      if (typeof window === "undefined" || leafletMapRef.current) return;
 
-    const existingScript = document.querySelector('script[src*="leaflet"]');
-    if (existingScript) {
-      if ((window as any).L) { initMap(); }
-      else { existingScript.addEventListener("load", initMap); }
-      return;
-    }
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+      document.head.appendChild(link);
 
-    const script = document.createElement("script");
-    script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
-    script.onload = initMap;
-    document.head.appendChild(script);
-
-    async function initMap() {
-      const L = (window as any).L;
-      if (!L || !mapRef.current || leafletMapRef.current) return;
-
-      const map = L.map(mapRef.current, { 
-        center: [49.75, 15.5], 
-        zoom: 8, 
-        zoomControl: false, 
-        minZoom: 7, maxZoom: 19, });
-      L.control.zoom({ position: "bottomright" }).addTo(map);
-      leafletMapRef.current = map;
-
-      let czFeature: any = null;
-      try {
-        const res = await fetch("https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson");
-        const data = await res.json();
-        czFeature = data.features.find((f: any) => f.properties.ISO_A2 === "CZ");
-        czGeoJsonRef.current = czFeature;
-      } catch (e) { console.error("Failed to load CZ GeoJSON", e); }
-
-      map.createPane("bgPane").style.zIndex = "199";
-      map.createPane("czPane").style.zIndex = "200";
-
-      bgLayerRef.current = L.tileLayer(LIGHT_TILES, { attribution: "© OpenStreetMap contributors © CARTO", subdomains: "abcd", maxZoom: 19, pane: "bgPane", opacity: 0.15 }).addTo(map);
-      clipLayerRef.current = L.tileLayer(LIGHT_TILES, { attribution: "", subdomains: "abcd", maxZoom: 19, pane: "czPane" }).addTo(map);
-
-      if (czFeature) {
-        const czBounds = L.geoJSON(czFeature).getBounds();
-        map.setMaxBounds(czBounds.pad(0.2));
-        map.fitBounds(czBounds, { padding: [40, 40] });
-
-        const applyClip = () => {
-          const paneEl = map.getPane("czPane") as HTMLElement;
-          if (!paneEl) return;
-          const old = paneEl.querySelector("svg.cz-clip");
-          if (old) old.remove();
-          const size = map.getSize();
-          const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-          svg.setAttribute("class", "cz-clip");
-          svg.style.cssText = `position:absolute;top:0;left:0;width:${size.x}px;height:${size.y}px;pointer-events:none;overflow:visible;`;
-          const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
-          const clipPath = document.createElementNS("http://www.w3.org/2000/svg", "clipPath");
-          clipPath.setAttribute("id", "cz-clip-path");
-          const toPixel = (coord: number[]) => {
-            const pt = map.latLngToContainerPoint(L.latLng(coord[1], coord[0]));
-            return `${pt.x},${pt.y}`;
-          };
-          const geom = czFeature.geometry;
-          const polys = geom.type === "Polygon" ? [geom.coordinates] : geom.coordinates;
-          let d = "";
-          polys.forEach((poly: number[][][]) => {
-            poly.forEach((ring: number[][]) => { d += "M " + ring.map(toPixel).join(" L ") + " Z "; });
-          });
-          const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-          path.setAttribute("d", d);
-          path.setAttribute("fill-rule", "evenodd");
-          clipPath.appendChild(path);
-          defs.appendChild(clipPath);
-          svg.appendChild(defs);
-          paneEl.style.clipPath = "";
-          paneEl.insertBefore(svg, paneEl.firstChild);
-          paneEl.style.clipPath = `url(#cz-clip-path)`;
-        };
-
-        applyClip();
-        map.on("moveend zoomend resize viewreset", applyClip);
-        L.geoJSON(czFeature, { style: { color: "#2e3a1f", weight: 2, fill: false, opacity: 0.7 }, interactive: false }).addTo(map);
+      const existingScript = document.querySelector('script[src*="leaflet"]');
+      if (existingScript) {
+        if ((window as any).L) { initMap(); }
+        else { existingScript.addEventListener("load", initMap); }
+        return;
       }
 
-      map.on("click", (e: any) => {
-        if (modeRef.current !== "drawing") return;
-        if (closingRef.current) return;
+      const script = document.createElement("script");
+      script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+      script.onload = initMap;
+      document.head.appendChild(script);
 
-        const latlng: [number, number] = [e.latlng.lat, e.latlng.lng];
-        const points = pointsRef.current;
+      async function initMap() {
+        const L = (window as any).L;
+        if (!L || !mapRef.current || leafletMapRef.current) return;
 
-        if (points.length >= 3) {
-          const first = map.latLngToContainerPoint(L.latLng(points[0]));
-          const clicked = map.latLngToContainerPoint(e.latlng);
-          const dx = first.x - clicked.x, dy = first.y - clicked.y;
-          if (Math.sqrt(dx * dx + dy * dy) < 12) {
-            if (closingWouldSelfIntersect(points)) { flashInvalid("Nelze uzavřít, tvar by se protínal"); return; }
-            if (exceedsSelectionLimit(points)) { flashInvalid("Maximální velikost označení je 2 km × 2 km"); return; }
-            closePolygonFn(L, map);
-            return;
-          }
+        const map = L.map(mapRef.current, {
+          center: [49.75, 15.5],
+          zoom: 8,
+          zoomControl: false,
+          minZoom: 7, maxZoom: 19,
+        });
+        L.control.zoom({ position: "bottomright" }).addTo(map);
+        leafletMapRef.current = map;
+
+        let czFeature: any = null;
+        try {
+          const res = await fetch("https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson");
+          const data = await res.json();
+          czFeature = data.features.find((f: any) => f.properties.ISO_A2 === "CZ");
+          czGeoJsonRef.current = czFeature;
+        } catch (e) { console.error("Failed to load CZ GeoJSON", e); }
+
+        map.createPane("bgPane").style.zIndex = "199";
+        map.createPane("czPane").style.zIndex = "200";
+
+        bgLayerRef.current = L.tileLayer(LIGHT_TILES, { attribution: "© OpenStreetMap contributors © CARTO", subdomains: "abcd", maxZoom: 19, pane: "bgPane", opacity: 0.15 }).addTo(map);
+        clipLayerRef.current = L.tileLayer(LIGHT_TILES, { attribution: "", subdomains: "abcd", maxZoom: 19, pane: "czPane" }).addTo(map);
+
+        if (czFeature) {
+          const czBounds = L.geoJSON(czFeature).getBounds();
+          map.setMaxBounds(czBounds.pad(0.2));
+          map.fitBounds(czBounds, { padding: [40, 40] });
+
+          const applyClip = () => {
+            const paneEl = map.getPane("czPane") as HTMLElement;
+            if (!paneEl) return;
+            const old = paneEl.querySelector("svg.cz-clip");
+            if (old) old.remove();
+            const size = map.getSize();
+            const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+            svg.setAttribute("class", "cz-clip");
+            svg.style.cssText = `position:absolute;top:0;left:0;width:${size.x}px;height:${size.y}px;pointer-events:none;overflow:visible;`;
+            const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+            const clipPath = document.createElementNS("http://www.w3.org/2000/svg", "clipPath");
+            clipPath.setAttribute("id", "cz-clip-path");
+            const toPixel = (coord: number[]) => {
+              const pt = map.latLngToContainerPoint(L.latLng(coord[1], coord[0]));
+              return `${pt.x},${pt.y}`;
+            };
+            const geom = czFeature.geometry;
+            const polys = geom.type === "Polygon" ? [geom.coordinates] : geom.coordinates;
+            let d = "";
+            polys.forEach((poly: number[][][]) => {
+              poly.forEach((ring: number[][]) => { d += "M " + ring.map(toPixel).join(" L ") + " Z "; });
+            });
+            const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            path.setAttribute("d", d);
+            path.setAttribute("fill-rule", "evenodd");
+            clipPath.appendChild(path);
+            defs.appendChild(clipPath);
+            svg.appendChild(defs);
+            paneEl.style.clipPath = "";
+            paneEl.insertBefore(svg, paneEl.firstChild);
+            paneEl.style.clipPath = `url(#cz-clip-path)`;
+          };
+
+          applyClip();
+          map.on("moveend zoomend resize viewreset", applyClip);
+          L.geoJSON(czFeature, { style: { color: "#2e3a1f", weight: 2, fill: false, opacity: 0.7 }, interactive: false }).addTo(map);
         }
 
-        if (wouldSelfIntersect(points, latlng)) { flashInvalid("Čáry se nesmí křížit, zkuste jiný bod"); return; }
-        if (exceedsSelectionLimit([...points, latlng])) { flashInvalid("Maximální velikost označení je 2 km × 2 km"); return; }
+        map.on("click", (e: any) => {
+          if (modeRef.current !== "drawing") return;
+          if (closingRef.current) return;
 
-        points.push(latlng);
-        setPointCount(points.length);
-        updateDrawing(L, map);
+          const latlng: [number, number] = [e.latlng.lat, e.latlng.lng];
+          const points = pointsRef.current;
+
+          if (points.length >= 3) {
+            const first = map.latLngToContainerPoint(L.latLng(points[0]));
+            const clicked = map.latLngToContainerPoint(e.latlng);
+            const dx = first.x - clicked.x, dy = first.y - clicked.y;
+            if (Math.sqrt(dx * dx + dy * dy) < 12) {
+              if (closingWouldSelfIntersect(points)) { flashInvalid("Nelze uzavřít, tvar by se protínal"); return; }
+              if (exceedsSelectionLimit(points)) { flashInvalid("Maximální velikost označení je 2 km × 2 km"); return; }
+              closePolygonFn(L, map);
+              return;
+            }
+          }
+
+          if (wouldSelfIntersect(points, latlng)) { flashInvalid("Čáry se nesmí křížit, zkuste jiný bod"); return; }
+          if (exceedsSelectionLimit([...points, latlng])) { flashInvalid("Maximální velikost označení je 2 km × 2 km"); return; }
+
+          points.push(latlng);
+          setPointCount(points.length);
+          updateDrawing(L, map);
+        });
+
+        setMapReady(true);
+      }
+    }, []);
+
+    useEffect(() => {
+      const bgLayer = bgLayerRef.current;
+      const clipLayer = clipLayerRef.current;
+      if (!bgLayer || !clipLayer) return;
+      const isSatellite = mapStyle === "satellite";
+      const tileUrl = isSatellite ? SATELLITE_TILES : LIGHT_TILES;
+      bgLayer.setUrl(tileUrl);
+      clipLayer.setUrl(tileUrl);
+      bgLayer.setOpacity(isSatellite ? 0.28 : 0.15);
+    }, [mapStyle]);
+
+    function flashInvalid(msg: string) {
+      setInvalidMsg(msg);
+      setTimeout(() => setInvalidMsg(null), 2200);
+    }
+
+    function updateDrawing(L: any, map: any) {
+      const points = pointsRef.current;
+      tempMarkersRef.current.forEach((m) => map.removeLayer(m));
+      tempMarkersRef.current = [];
+      if (tempPolylineRef.current) { map.removeLayer(tempPolylineRef.current); tempPolylineRef.current = null; }
+      points.forEach((pt, i) => {
+        const isFirst = i === 0;
+        const dot = L.circleMarker(pt, { radius: isFirst ? 8 : 5, color: "#2e3a1f", fillColor: isFirst && points.length >= 3 ? "#ACC18A" : "#ffffff", fillOpacity: 1, weight: isFirst ? 3 : 2 }).addTo(map);
+        tempMarkersRef.current.push(dot);
       });
-
-      setMapReady(true);
+      if (points.length > 1) {
+        tempPolylineRef.current = L.polyline(points, { color: "#2e3a1f", weight: 2, dashArray: "6 4", opacity: 0.8 }).addTo(map);
+      }
     }
-  }, []);
 
-  useEffect(() => {
-    const bgLayer = bgLayerRef.current;
-    const clipLayer = clipLayerRef.current;
-    if (!bgLayer || !clipLayer) return;
-    const isSatellite = mapStyle === "satellite";
-    const tileUrl = isSatellite ? SATELLITE_TILES : LIGHT_TILES;
-    bgLayer.setUrl(tileUrl);
-    clipLayer.setUrl(tileUrl);
-    bgLayer.setOpacity(isSatellite ? 0.28 : 0.15);
-  }, [mapStyle]);
+    function closePolygonFn(L: any, map: any) {
+      const points = pointsRef.current;
+      if (points.length < 3) return;
+      if (exceedsSelectionLimit(points)) { flashInvalid("Maximální velikost označení je 2 km × 2 km"); return; }
+      closingRef.current = true;
 
-  function flashInvalid(msg: string) {
-    setInvalidMsg(msg);
-    setTimeout(() => setInvalidMsg(null), 2200);
-  }
+      tempMarkersRef.current.forEach((m) => map.removeLayer(m));
+      tempMarkersRef.current = [];
+      if (tempPolylineRef.current) { map.removeLayer(tempPolylineRef.current); tempPolylineRef.current = null; }
 
-  function updateDrawing(L: any, map: any) {
-    const points = pointsRef.current;
-    tempMarkersRef.current.forEach((m) => map.removeLayer(m));
-    tempMarkersRef.current = [];
-    if (tempPolylineRef.current) { map.removeLayer(tempPolylineRef.current); tempPolylineRef.current = null; }
-    points.forEach((pt, i) => {
-      const isFirst = i === 0;
-      const dot = L.circleMarker(pt, { radius: isFirst ? 8 : 5, color: "#2e3a1f", fillColor: isFirst && points.length >= 3 ? "#ACC18A" : "#ffffff", fillOpacity: 1, weight: isFirst ? 3 : 2 }).addTo(map);
-      tempMarkersRef.current.push(dot);
-    });
-    if (points.length > 1) {
-      tempPolylineRef.current = L.polyline(points, { color: "#2e3a1f", weight: 2, dashArray: "6 4", opacity: 0.8 }).addTo(map);
+      // Add outline for this finalized polygon
+      const outlineLayer = L.polygon(points, { color: "#2e3a1f", weight: 2, fill: false, interactive: false }).addTo(map);
+      finalizedPolygonLayersRef.current.push(outlineLayer);
+
+      // Rebuild combined mask with all areas (including the new one) as holes
+      if (combinedMaskRef.current) { map.removeLayer(combinedMaskRef.current); }
+      const allHoles = [...finalizedAreasRef.current.map(a => a.points), points];
+      const world: [number, number][] = [[-90, -180], [-90, 180], [90, 180], [90, -180]];
+      combinedMaskRef.current = L.polygon([world, ...allHoles], {
+        color: "transparent", fillColor: "#F4F5E0", fillOpacity: 0.92, fillRule: "evenodd", interactive: false,
+      }).addTo(map);
+
+      map.fitBounds(L.polygon(points).getBounds(), { padding: [60, 60], maxZoom: 19 });
+
+      const lats = points.map(p => p[0]);
+      const lngs = points.map(p => p[1]);
+      const selectedArea: SelectedArea = {
+        points: [...points],
+        bounds: { north: Math.max(...lats), south: Math.min(...lats), east: Math.max(...lngs), west: Math.min(...lngs) },
+        areaSqKm: computeAreaSqKm(points),
+      };
+
+      finalizedAreasRef.current = [...finalizedAreasRef.current, selectedArea];
+
+      pointsRef.current = [];
+      setPointCount(0);
+      setMode("idle");
+      setTimeout(() => { closingRef.current = false; }, 300);
+      setTimeout(() => { onAreaSelected(selectedArea); }, 600);
     }
-  }
 
-  function closePolygonFn(L: any, map: any) {
-    const points = pointsRef.current;
-    if (points.length < 3) return;
-    if (exceedsSelectionLimit(points)) { flashInvalid("Maximální velikost označení je 2 km × 2 km"); return; }
-    closingRef.current = true;
+    function clearInProgress() {
+      const map = leafletMapRef.current;
+      if (!map) return;
+      tempMarkersRef.current.forEach((m) => map.removeLayer(m));
+      tempMarkersRef.current = [];
+      if (tempPolylineRef.current) { map.removeLayer(tempPolylineRef.current); tempPolylineRef.current = null; }
+      pointsRef.current = [];
+      setPointCount(0);
+    }
 
-    tempMarkersRef.current.forEach((m) => map.removeLayer(m));
-    tempMarkersRef.current = [];
-    if (tempPolylineRef.current) { map.removeLayer(tempPolylineRef.current); tempPolylineRef.current = null; }
-    if (polygonRef.current) map.removeLayer(polygonRef.current);
-    if (maskRef.current) map.removeLayer(maskRef.current);
+    function clearAll() {
+      const map = leafletMapRef.current;
+      if (map) {
+        tempMarkersRef.current.forEach((m) => map.removeLayer(m));
+        if (tempPolylineRef.current) { map.removeLayer(tempPolylineRef.current); }
+        finalizedPolygonLayersRef.current.forEach(l => map.removeLayer(l));
+        if (combinedMaskRef.current) { map.removeLayer(combinedMaskRef.current); }
+      }
+      tempMarkersRef.current = [];
+      tempPolylineRef.current = null;
+      finalizedPolygonLayersRef.current = [];
+      combinedMaskRef.current = null;
+      finalizedAreasRef.current = [];
+      pointsRef.current = [];
+      setPointCount(0);
+      setMode("idle");
+    }
 
-    const world: [number, number][] = [[-90, -180], [-90, 180], [90, 180], [90, -180]];
-    maskRef.current = L.polygon([world, points], { color: "transparent", fillColor: "#F4F5E0", fillOpacity: 0.92, fillRule: "evenodd", interactive: false }).addTo(map);
-    polygonRef.current = L.polygon(points, { color: "#2e3a1f", weight: 2, fill: false, interactive: false }).addTo(map);
-    map.fitBounds(polygonRef.current.getBounds(), { padding: [60, 60], maxZoom: 19 });
+    function startDrawing() { clearAll(); setMode("drawing"); }
 
-    const lats = points.map(p => p[0]);
-    const lngs = points.map(p => p[1]);
-    const selectedArea: SelectedArea = {
-      points: [...points],
-      bounds: { north: Math.max(...lats), south: Math.min(...lats), east: Math.max(...lngs), west: Math.min(...lngs) },
-      areaSqKm: computeAreaSqKm(points),
-    };
+    useEffect(() => {
+      if (!mapRef.current) return;
+      mapRef.current.style.cursor = mode === "drawing" ? "crosshair" : "";
+    }, [mode]);
 
-    pointsRef.current = [];
-    setPointCount(0);
-    setMode("idle");
-    setTimeout(() => { closingRef.current = false; }, 300);
-    setTimeout(() => { onAreaSelected(selectedArea); }, 600);
-  }
+    return (
+      <div className="relative w-full" style={{ height: "calc(100vh - 64px - 57px)" }}>
+        <div ref={mapRef} className="absolute inset-0" />
 
-  function clearAll() {
-    const L = (window as any).L;
-    const map = leafletMapRef.current;
-    if (!L || !map) return;
-    tempMarkersRef.current.forEach((m) => map.removeLayer(m));
-    tempMarkersRef.current = [];
-    if (tempPolylineRef.current) { map.removeLayer(tempPolylineRef.current); tempPolylineRef.current = null; }
-    if (polygonRef.current) { map.removeLayer(polygonRef.current); polygonRef.current = null; }
-    if (maskRef.current) { map.removeLayer(maskRef.current); maskRef.current = null; }
-    pointsRef.current = [];
-    setPointCount(0);
-    setMode("idle");
-  }
-
-  function startDrawing() { clearAll(); setMode("drawing"); }
-
-  useEffect(() => {
-    if (!mapRef.current) return;
-    mapRef.current.style.cursor = mode === "drawing" ? "crosshair" : "";
-  }, [mode]);
-
-  return (
-    <div className="relative w-full" style={{ height: "calc(100vh - 64px - 57px)" }}>
-      <div ref={mapRef} className="absolute inset-0" />
-
-      {mapReady && (
-        <div className="absolute top-5 left-5 z-[1000] bg-bg/95 backdrop-blur-md border border-btn/40 rounded-2xl p-1.5 flex items-center gap-1 shadow-lg">
-          <button onClick={() => setMapStyle("light")} className={`px-3 py-1.5 rounded-xl text-xs tracking-wide transition-all ${mapStyle === "light" ? "bg-text text-bg" : "text-text-mid hover:bg-bg/70"}`}>Mapa</button>
-          <button onClick={() => setMapStyle("satellite")} className={`px-3 py-1.5 rounded-xl text-xs tracking-wide transition-all ${mapStyle === "satellite" ? "bg-text text-bg" : "text-text-mid hover:bg-bg/70"}`}>Satelit</button>
-        </div>
-      )}
-
-      {mapReady && (
-        <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-[1000] flex items-center gap-2">
-          {mode === "idle" && (
-            <button onClick={startDrawing} className="flex items-center gap-2 bg-bg/95 backdrop-blur-md border border-btn/50 rounded-2xl px-5 py-3 shadow-lg hover:border-btn transition-all text-sm font-medium text-text">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="flex-shrink-0">
-                <path d="M2 14L6 10M6 10L2 2L14 6L8 8L6 10Z" stroke="#2e3a1f" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
-              </svg>
-              Nakreslit oblast
-            </button>
-          )}
-          {mode === "drawing" && (
-            <>
-              <div className="bg-bg/95 backdrop-blur-md border border-btn/40 rounded-2xl px-5 py-3 shadow-lg text-sm text-text-mid">
-                {pointCount === 0 && "Klikněte na mapu pro první bod"}
-                {pointCount === 1 && "Klikněte pro přidání dalších bodů"}
-                {pointCount === 2 && "Pokračujte klikáním pro další body"}
-                {pointCount >= 3 && "Klikněte na první bod pro dokončení"}
-              </div>
-              <button onMouseDown={(e) => { e.stopPropagation(); clearAll(); }} className="flex items-center gap-2 bg-bg/95 backdrop-blur-md border border-btn/40 rounded-2xl px-4 py-3 shadow-lg hover:border-btn transition-all text-sm text-text-mid">
-                ✕ Zrušit
-              </button>
-            </>
-          )}
-        </div>
-      )}
-
-      {invalidMsg && (
-        <div className="absolute top-5 left-1/2 -translate-x-1/2 z-[1000] bg-text text-bg text-sm px-5 py-3 rounded-2xl shadow-lg pointer-events-none">
-          ✕ {invalidMsg}
-        </div>
-      )}
-
-      {!mapReady && (
-        <div className="absolute inset-0 bg-bg flex items-center justify-center z-[2000]">
-          <div className="text-center">
-            <div className="flex items-center justify-center text-5xl mb-4 animate-bounce">
-              <Image src="/logo.svg" alt="Logo" width={48} height={48} />
-            </div>
-            <p className="font-display text-2xl text-text">Načítání mapy…</p>
+        {mapReady && (
+          <div className="absolute top-5 left-5 z-[1000] bg-bg/95 backdrop-blur-md border border-btn/40 rounded-2xl p-1.5 flex items-center gap-1 shadow-lg">
+            <button onClick={() => setMapStyle("light")} className={`px-3 py-1.5 rounded-xl text-xs tracking-wide transition-all ${mapStyle === "light" ? "bg-text text-bg" : "text-text-mid hover:bg-bg/70"}`}>Mapa</button>
+            <button onClick={() => setMapStyle("satellite")} className={`px-3 py-1.5 rounded-xl text-xs tracking-wide transition-all ${mapStyle === "satellite" ? "bg-text text-bg" : "text-text-mid hover:bg-bg/70"}`}>Satelit</button>
           </div>
-        </div>
-      )}
-    </div>
-  );
-}
+        )}
+
+        {mapReady && (
+          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-[1000] flex items-center gap-2">
+            {mode === "idle" && (
+              <button onClick={startDrawing} className="flex items-center gap-2 bg-bg/95 backdrop-blur-md border border-btn/50 rounded-2xl px-5 py-3 shadow-lg hover:border-btn transition-all text-sm font-medium text-text">
+                <Pencil size={16} className="flex-shrink-0" />
+                Nakreslit oblast
+              </button>
+            )}
+            {mode === "drawing" && (
+              <>
+                <div className="bg-bg/95 backdrop-blur-md border border-btn/40 rounded-2xl px-5 py-3 shadow-lg text-sm text-text-mid">
+                  {pointCount === 0 && "Klikněte na mapu pro první bod"}
+                  {pointCount === 1 && "Klikněte pro přidání dalších bodů"}
+                  {pointCount === 2 && "Pokračujte klikáním pro další body"}
+                  {pointCount >= 3 && "Klikněte na první bod pro dokončení"}
+                </div>
+                <button onMouseDown={(e) => { e.stopPropagation(); clearAll(); }} className="flex items-center gap-2 bg-bg/95 backdrop-blur-md border border-btn/40 rounded-2xl px-4 py-3 shadow-lg hover:border-btn transition-all text-sm text-text-mid">
+                  <X size={14} /> Zrušit
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
+        {invalidMsg && (
+          <div className="absolute top-5 left-1/2 -translate-x-1/2 z-[1000] bg-text text-bg text-sm px-5 py-3 rounded-2xl shadow-lg pointer-events-none flex items-center gap-2">
+            <X size={14} /> {invalidMsg}
+          </div>
+        )}
+
+        {!mapReady && (
+          <div className="absolute inset-0 bg-bg flex items-center justify-center z-[2000]">
+            <div className="text-center">
+              <div className="flex items-center justify-center text-5xl mb-4 animate-bounce">
+                <Image src="/logo.svg" alt="Logo" width={48} height={48} />
+              </div>
+              <p className="font-display text-2xl text-text">Načítání mapy…</p>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+);
 
 
 export default function App() {
   const [page, setPage] = useState<AppPage>("map");
-  const [selectedArea, setSelectedArea] = useState<SelectedArea | null>(null);
+  const [selectedAreas, setSelectedAreas] = useState<SelectedArea[]>([]);
+  const [showParcelDialog, setShowParcelDialog] = useState(false);
   const [initialPlan, setInitialPlan] = useState<GeoElement[] | undefined>(undefined);
+  const mapViewRef = useRef<{ startNewDrawing: () => void }>(null);
+  const pendingAreasRef = useRef<SelectedArea[]>([]);
 
   useEffect(() => {
     const hash = window.location.hash;
     if (hash.startsWith("#summary=")) {
-      const data = decodeHashPayload<{ v: number; area?: SelectedArea }>(hash.slice(9));
-      if (data?.v === 1 && data.area?.points) {
-        setSelectedArea(data.area);
+      const data = decodeHashPayload<{ v: number; area?: SelectedArea; areas?: SelectedArea[] }>(hash.slice(9));
+      if (data?.v === 2 && Array.isArray(data.areas) && data.areas.length > 0) {
+        setSelectedAreas(data.areas);
+        setPage("results");
+      } else if (data?.v === 1 && data.area?.points) {
+        setSelectedAreas([data.area]);
         setInitialPlan(undefined);
         setPage("results");
       }
@@ -900,7 +952,7 @@ export default function App() {
     if (hash.startsWith("#plan=")) {
       const data = decodeHashPayload<{ v: number; area?: SelectedArea; elements?: GeoElement[] }>(hash.slice(6));
       if (data?.v === 1 && data.area?.points && Array.isArray(data.elements)) {
-        setSelectedArea(data.area);
+        setSelectedAreas([data.area]);
         setInitialPlan(data.elements);
         setPage("editor");
       }
@@ -908,26 +960,54 @@ export default function App() {
   }, []);
 
   function handleAreaSelected(area: SelectedArea) {
-    setSelectedArea(area);
+    pendingAreasRef.current = [...pendingAreasRef.current, area];
+    setShowParcelDialog(true);
+  }
+
+  function handleContinueToResults() {
+    setSelectedAreas(pendingAreasRef.current);
+    setShowParcelDialog(false);
     setInitialPlan(undefined);
     setPage("results");
   }
 
+  function handleAddAnother() {
+    setShowParcelDialog(false);
+    mapViewRef.current?.startNewDrawing();
+  }
+
+  function handleBack() {
+    setPage("map");
+    pendingAreasRef.current = [];
+    setSelectedAreas([]);
+  }
+
+  const pendingArea = pendingAreasRef.current[pendingAreasRef.current.length - 1];
+
   return (
     <div style={{ position: "relative", width: "100%", height: "100%" }}>
-      <MapView onAreaSelected={handleAreaSelected} />
+      <MapView ref={mapViewRef} onAreaSelected={handleAreaSelected} />
 
-      {page === "results" && selectedArea && (
+      {showParcelDialog && pendingArea && (
+        <ParcelChoiceDialog
+          parcelIndex={pendingAreasRef.current.length}
+          area={pendingArea}
+          onContinue={handleContinueToResults}
+          onAddAnother={handleAddAnother}
+        />
+      )}
+
+      {page === "results" && selectedAreas.length > 0 && (
         <ResultsPage
-          area={selectedArea}
-          onBack={() => setPage("map")}
+          areas={selectedAreas}
+          onBack={handleBack}
           onOpenEditor={() => setPage("editor")}
         />
       )}
 
-      {page === "editor" && selectedArea && (
+      {page === "editor" && selectedAreas.length > 0 && (
         <ParcelEditor
-          area={selectedArea}
+          areas={selectedAreas}
           onBack={() => setPage("results")}
           initialPlan={initialPlan}
         />
