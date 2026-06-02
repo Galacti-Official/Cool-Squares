@@ -841,6 +841,7 @@ export default function ParcelEditor({ area, onBack, initialPlan }: { area: Sele
 
     function render() {
       const { w, h } = canvasSize.current;
+      if (!w || !h) { raf = requestAnimationFrame(render); return; }
       const { x: vpX, y: vpY, zoom, angle } = vp.current;
       const isSat = editorMapStyle === "satellite";
       const hasTiles = isSat && satelliteTilesRef.current.length > 0;
