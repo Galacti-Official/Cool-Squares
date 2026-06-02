@@ -143,49 +143,7 @@ function MiniMap({ area }: { area: SelectedArea }) {
 }
 
 
-const LANDCOVER_MAP: Record<string, { label: string; color: string }> = {
-  forest:       { label: "Les",           color: "#4A7C59" },
-  wood:         { label: "Les",           color: "#4A7C59" },
-  farmland:     { label: "Orná půda",     color: "#D4C07A" },
-  meadow:       { label: "Louka",         color: "#8BC34A" },
-  grass:        { label: "Tráva",         color: "#AED581" },
-  grassland:    { label: "Travní porost", color: "#AED581" },
-  residential:  { label: "Zástavba",      color: "#C4A882" },
-  commercial:   { label: "Komerční",      color: "#E8A87C" },
-  industrial:   { label: "Průmysl",       color: "#90A4AE" },
-  scrub:        { label: "Křoviny",       color: "#7CB342" },
-  wetland:      { label: "Mokřad",        color: "#4DB6AC" },
-  water:        { label: "Voda",          color: "#5C9BD6" },
-  allotments:   { label: "Zahrádky",      color: "#9BC67A" },
-  park:         { label: "Park",          color: "#66BB6A" },
-  orchard:      { label: "Sad",           color: "#A5D6A7" },
-  vineyard:     { label: "Vinice",        color: "#CE93D8" },
-  cemetery:     { label: "Hřbitov",       color: "#B0BEC5" },
-  construction: { label: "Staveniště",    color: "#A1887F" },
-  retail:       { label: "Obchodní",      color: "#FFAB76" },
-  heath:        { label: "Vřesoviště",    color: "#A5D6A7" },
-  beach:        { label: "Pláž",          color: "#FFE082" },
-  sand:         { label: "Písek",         color: "#FFD54F" },
-};
-
-const landCoverCache = new Map<string, { key: string; label: string; color: string; pct: number }[]>();
 const adminUnitsCache = new Map<string, { label: string; value: string }[]>();
-
-function LandCoverSkeleton() {
-  return (
-    <div style={{ padding: "16px 20px" }} className="animate-pulse">
-      <div style={{ height: 10, borderRadius: 3, background: "#2e3a1f18", marginBottom: 14 }} />
-      <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 18px" }}>
-        {[80, 55, 90, 65].map(w => (
-          <div key={w} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <div style={{ width: 9, height: 9, borderRadius: 2, background: "#2e3a1f18", flexShrink: 0 }} />
-            <div style={{ width: w, height: 9, borderRadius: 2, background: "#2e3a1f14" }} />
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 function AdminSkeleton() {
   return (
@@ -199,79 +157,6 @@ function AdminSkeleton() {
           </div>
         </div>
       ))}
-    </div>
-  );
-}
-
-function LandCoverSummary({ area }: { area: SelectedArea }) {
-  const [items, setItems] = useState<{ key: string; label: string; color: string; pct: number }[] | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
-
-  useEffect(() => {
-    setItems(null);
-    setLoading(true);
-    setError(false);
-    const { north, south, east, west } = area.bounds;
-    const cacheKey = `${south.toFixed(4)},${west.toFixed(4)},${north.toFixed(4)},${east.toFixed(4)}`;
-    const cachedItems = landCoverCache.get(cacheKey);
-    if (cachedItems) { setItems(cachedItems); setLoading(false); return; }
-    const query = `[out:json][timeout:20];(way["landuse"](${south},${west},${north},${east});way["natural"~"^(wood|scrub|heath|grassland|wetland|water|beach|sand)$"](${south},${west},${north},${east});relation["landuse"](${south},${west},${north},${east}););out tags;`;
-    fetch("https://overpass-api.de/api/interpreter", {
-      method: "POST",
-      body: "data=" + encodeURIComponent(query),
-    })
-      .then(r => r.json())
-      .then(data => {
-        const counts: Record<string, number> = {};
-        for (const el of (data.elements as any[])) {
-          const raw: string | undefined = el.tags?.landuse ?? el.tags?.natural;
-          if (!raw) continue;
-          const key = raw === "wood" ? "forest" : raw;
-          counts[key] = (counts[key] ?? 0) + 1;
-        }
-        const total = Object.values(counts).reduce((a, b) => a + b, 0);
-        if (total === 0) { landCoverCache.set(cacheKey, []); setItems([]); setLoading(false); return; }
-        const sorted = Object.entries(counts)
-          .sort((a, b) => b[1] - a[1])
-          .slice(0, 8)
-          .map(([key, count]) => ({
-            key,
-            label: LANDCOVER_MAP[key]?.label ?? key,
-            color: LANDCOVER_MAP[key]?.color ?? "#2e3a1f44",
-            pct: Math.round((count / total) * 100),
-          }));
-        landCoverCache.set(cacheKey, sorted);
-        setItems(sorted);
-        setLoading(false);
-      })
-      .catch(() => { setError(true); setLoading(false); });
-  }, [area]);
-
-  return (
-    <div style={{ padding: "16px 20px" }}>
-      {loading && <LandCoverSkeleton />}
-      {error && <span style={{ fontSize: 12, color: "#2e3a1f44", fontStyle: "italic" }}>Data nejsou dostupná</span>}
-      {items?.length === 0 && <span style={{ fontSize: 12, color: "#2e3a1f44", fontStyle: "italic" }}>Pro tuto oblast nebyla nalezena data pokryvu</span>}
-      {items && items.length > 0 && (
-        <>
-          <div style={{ display: "flex", borderRadius: 3, overflow: "hidden", height: 10, marginBottom: 14, gap: 1 }}>
-            {items.map(item => (
-              <div key={item.key} title={`${item.label}: ~${item.pct}%`}
-                style={{ flex: item.pct, background: item.color, minWidth: 2 }} />
-            ))}
-          </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 18px" }}>
-            {items.map(item => (
-              <div key={item.key} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                <div style={{ width: 9, height: 9, borderRadius: 2, background: item.color, flexShrink: 0 }} />
-                <span style={{ fontSize: 11, color: "#2e3a1f88" }}>{item.label}</span>
-                <span style={{ fontSize: 11, color: "#2e3a1f44", fontStyle: "italic" }}>~{item.pct}%</span>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
     </div>
   );
 }
@@ -432,7 +317,7 @@ function ParcelChoiceDialog({
               color: "#F4F5E0", letterSpacing: "0.04em",
             }}
           >
-            Výsledky →
+            Pokračovat →
           </button>
         </div>
       </div>
@@ -617,7 +502,6 @@ function ResultsPage({
                     </div>
                   </div>
                   {[
-                    { title: "Souhrn pokryvu půdy", content: <LandCoverSummary area={a} /> },
                     { title: "Správní celky",       content: <AdminUnits area={a} /> },
                     { title: "Tierlist povrchů ve městě", content: <UrbanSurfaceTierlist /> },
                   ].map(({ title, content }) => (
