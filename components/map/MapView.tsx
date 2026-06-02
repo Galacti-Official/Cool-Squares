@@ -288,23 +288,22 @@ function AdminUnits({ area }: { area: SelectedArea }) {
       .catch(() => { setError(true); setLoading(false); });
   }, []);
 
+  if (loading) return <AdminSkeleton />;
+  if (error) return <div style={{ padding: "16px 20px", fontSize: 12, color: "#2e3a1f44", fontStyle: "italic" }}>Data nejsou dostupná</div>;
+
   return (
     <div style={{ padding: "16px 20px" }}>
-      {loading && <AdminSkeleton />}
-      {error && <span style={{ fontSize: 12, color: "#2e3a1f44", fontStyle: "italic" }}>Data nejsou dostupná</span>}
-      {levels && (
-        <div style={{ display: "flex", alignItems: "flex-start", flexWrap: "wrap", gap: 4 }}>
-          {levels.map(({ label, value }, i) => (
-            <div key={label} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              {i > 0 && <span style={{ color: "#2e3a1f33", fontSize: 14, lineHeight: 1, marginRight: 2 }}>›</span>}
-              <div>
-                <div style={{ fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", color: "#2e3a1f55", marginBottom: 1 }}>{label}</div>
-                <div style={{ fontSize: 13, color: "#2e3a1f", fontStyle: "italic" }}>{value}</div>
-              </div>
+      <div style={{ display: "flex", alignItems: "flex-start", flexWrap: "wrap", gap: 4 }}>
+        {(levels ?? []).map(({ label, value }, i) => (
+          <div key={label} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            {i > 0 && <span style={{ color: "#2e3a1f33", fontSize: 14, lineHeight: 1, marginRight: 2 }}>›</span>}
+            <div>
+              <div style={{ fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", color: "#2e3a1f55", marginBottom: 1 }}>{label}</div>
+              <div style={{ fontSize: 13, color: "#2e3a1f", fontStyle: "italic" }}>{value}</div>
             </div>
-          ))}
-        </div>
-      )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -425,8 +424,7 @@ function ResultsPage({
         </nav>
 
         <main className="flex-1 overflow-auto p-4 sm:p-8 md:px-10">
-          {activeTab === "overview" && (
-            <div style={{ maxWidth: 820 }}>
+          <div style={{ maxWidth: 820, display: activeTab === "overview" ? undefined : "none" }}>
               <h1 style={{ fontSize: 28, fontWeight: 400, color: "#2e3a1f", marginBottom: 6, lineHeight: 1.2, fontStyle: "italic" }}>Vlastní oblast</h1>
               <p style={{ fontSize: 13, color: "#2e3a1f77", marginBottom: 24, letterSpacing: "0.04em" }}>
                 Nakresleno v České republice · {new Date().toLocaleDateString("cs-CZ", { day: "numeric", month: "long", year: "numeric" })}
@@ -462,8 +460,7 @@ function ResultsPage({
                   {content}
                 </div>
               ))}
-            </div>
-          )}
+          </div>
           {activeTab === "climate" && (
             <div style={{ maxWidth: 900 }}>
               <h1 style={{ fontSize: 28, fontWeight: 400, color: "#2e3a1f", marginBottom: 6, lineHeight: 1.2, fontStyle: "italic" }}>Klima</h1>
