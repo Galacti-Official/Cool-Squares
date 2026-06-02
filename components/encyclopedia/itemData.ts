@@ -1,4 +1,4 @@
-export type Category = "Květináče" | "Nádoby" | "Půdní pokryv" | "Vodní prvky" | "Posezení";
+export type Category = "Květináče" | "Nádoby" | "Půdní pokryv" | "Posezení";
 
 export interface ItemDimensions {
   width: number;
@@ -99,7 +99,7 @@ export const ITEMS: Item[] = [
   },
 ];
 
-export const CATEGORIES: Category[] = ["Květináče", "Nádoby", "Půdní pokryv", "Vodní prvky", "Posezení"];
+export const CATEGORIES: Category[] = ["Květináče", "Nádoby", "Půdní pokryv", "Posezení"];
 
 export const COST_LABEL: Record<string, string> = { low: "Nízké", medium: "Střední", high: "Vysoké" };
 export const MAINT_LABEL: Record<string, string> = { low: "Nízká", medium: "Střední", high: "Vysoká" };
