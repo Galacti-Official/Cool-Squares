@@ -2091,8 +2091,10 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
                   return (
                     <button key={item.type} onClick={() => placeCatalogItem(item)}
                       style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, padding: "12px 4px", border: "1.5px solid #2e3a1f18", borderRadius: 10, background: "#2e3a1f05", cursor: "pointer", fontFamily: "inherit" }}>
-                      <div style={{ width: 40, height: 40, borderRadius: 8, background: item.color + "33", border: `1.5px solid ${item.color}66`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>
-                        {item.icon}
+                      <div style={{ width: 40, height: 40, borderRadius: 8, border: `1.5px solid ${item.color}66`, overflow: "hidden", background: item.color + "33", flexShrink: 0 }}>
+                        {item.itemRef?.previewImagePath
+                          ? <img src={item.itemRef.previewImagePath} alt={item.label} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                          : null}
                       </div>
                       <span style={{ fontSize: 9.5, letterSpacing: "0.03em", color: "#2e3a1f99", textAlign: "center", lineHeight: 1.2 }}>{item.label}</span>
                       {priceLabel && <span style={{ fontSize: 8.5, color: "#2e3a1f55" }}>{priceLabel} Kč</span>}
