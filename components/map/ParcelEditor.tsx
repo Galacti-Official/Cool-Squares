@@ -1898,7 +1898,19 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
     const exportCtx = exportCanvas.getContext("2d");
     if (!exportCtx) return;
 
+    const savedVp = { ...vp.current };
+    const { project } = makeProjection(area.points, w, h, 80);
+    const pts = area.points.map(project);
+    const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+    const pw = Math.max(...xs) - Math.min(...xs), ph = Math.max(...ys) - Math.min(...ys);
+    const fitZoom = Math.min((w - 120) / pw, (h - 120) / ph, 4);
+    const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+    const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+    vp.current = { x: w / 2 - cx * fitZoom, y: h / 2 - cy * fitZoom, zoom: fitZoom, angle: 0 };
+
     drawEditorScene(exportCtx, w, h, { selectedIds: [], hoveredId: null, showRotateHandle: false });
+
+    vp.current = savedVp;
 
     exportCanvas.toBlob(blob => {
       if (!blob) {
