@@ -7,25 +7,16 @@ import { ITEMS, type Item } from "../encyclopedia/itemData";
 import { formatAreaByMagnitude } from "./areaFormat";
 import ClimateMap from "./ClimateMap";
 import { ArrowLeft, ChevronDown, Maximize2, MoreVertical, Plus, Redo2, RotateCcw, RotateCw, Trash2, Undo2, X } from "lucide-react";
+import type { GeoElement, SelectedArea } from "@/lib/types";
+import { formatCZK, tempDeltaColor, tempDeltaLabel } from "@/lib/format";
+import { normalizeSearchText } from "@/lib/search";
+import { encodeHashPayload } from "@/lib/hash";
+import { saveSession } from "@/lib/session";
+
+export type { GeoElement, SelectedArea };
 
 const StlPreview = dynamic(() => import("../StlPreview"), { ssr: false });
 
-
-export interface SelectedArea {
-  points: [number, number][];
-  bounds: { north: number; south: number; east: number; west: number };
-  areaSqKm: number;
-}
-
-export interface GeoElement {
-  t: string;
-  lat: number;
-  lng: number;
-  wM: number;
-  hM: number;
-  rot: number;
-  note?: string;
-}
 
 interface SatelliteTile {
   z: number;
@@ -57,6 +48,8 @@ interface ParcelSavedState {
   history: PlacedElement[][];
   historyIndex: number;
   vp: Viewport;
+  /** When false, the parcel is re-fitted to the viewport the first time it is shown. */
+  vpInitialised?: boolean;
 }
 
 interface PlanStats {
@@ -186,22 +179,50 @@ function makeProjection(
 }
 
 
-function formatCZK(n: number): string {
-  return n.toLocaleString("cs-CZ") + "\u00a0Kč";
-}
-
-function normalizeSearchText(value: string): string {
-  return value
-    .toLocaleLowerCase("cs-CZ")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
-}
-
 const SNAP = 5;
 const HIT_PADDING_PX = 5;
 const OBJECT_MARGIN_PX = 1;
 function snapTo(v: number) { return Math.round(v / SNAP) * SNAP; }
 function genId() { return Math.random().toString(36).slice(2, 9); }
+
+/** Convert a geo-anchored plan element into a canvas-space placed element. */
+function geoElementToPlaced(
+  ge: GeoElement,
+  project: (pt: [number, number]) => [number, number],
+  pixelsPerMetre: number
+): PlacedElement {
+  const [px, py] = project([ge.lat, ge.lng]);
+  const wPx = Math.max(4, ge.wM * pixelsPerMetre);
+  const hPx = Math.max(4, ge.hM * pixelsPerMetre);
+  return {
+    id: genId(),
+    type: ge.t,
+    x: snapTo(px - wPx / 2),
+    y: snapTo(py - hPx / 2),
+    wPx,
+    hPx,
+    rotation: ge.rot,
+    ...(ge.note ? { note: ge.note } : {}),
+  };
+}
+
+/** Convert a canvas-space placed element back into a geo-anchored plan element. */
+function placedElementToGeo(
+  el: PlacedElement,
+  unproject: (pt: [number, number]) => [number, number],
+  pixelsPerMetre: number
+): GeoElement {
+  const [lat, lng] = unproject([el.x + el.wPx / 2, el.y + el.hPx / 2]);
+  return {
+    t: el.type,
+    lat: +lat.toFixed(7),
+    lng: +lng.toFixed(7),
+    wM: +(el.wPx / pixelsPerMetre).toFixed(3),
+    hM: +(el.hPx / pixelsPerMetre).toFixed(3),
+    rot: el.rotation || 0,
+    ...(el.note ? { note: el.note } : {}),
+  };
+}
 
 function pointInPolygon(point: [number, number], polygon: [number, number][]): boolean {
   const [x, y] = point;
@@ -620,11 +641,8 @@ function PlanSummaryBar({ stats, expanded, onToggle, area }: {
   area: SelectedArea;
 }) {
   const hasElements = stats && stats.breakdown.length > 0;
-  const tempColor = !stats || stats.tempDelta === 0 ? "#2e3a1f66"
-    : stats.tempDelta < -1.5 ? "#2a7d4f"
-    : stats.tempDelta < -0.5 ? "#5a9e72"
-    : "#8ab89a";
-  const tempLabel = !stats || stats.tempDelta === 0 ? "—" : `${stats.tempDelta.toFixed(1)} °C`;
+  const tempColor = tempDeltaColor(stats?.tempDelta);
+  const tempLabel = tempDeltaLabel(stats?.tempDelta);
   const coverLabel = stats ? `${stats.coveragePct.toFixed(0)}% pokryto` : "0% pokryto";
 
   return (
@@ -710,7 +728,7 @@ function PlanSummaryBar({ stats, expanded, onToggle, area }: {
 }
 
 
-export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: SelectedArea[]; onBack: () => void; initialPlan?: GeoElement[] }) {
+export default function ParcelEditor({ areas, onBack, initialPlans }: { areas: SelectedArea[]; onBack: () => void; initialPlans?: GeoElement[][] }) {
   const [activeParcelIdx, setActiveParcelIdx] = useState(0);
   const area = areas[activeParcelIdx];
 
@@ -775,11 +793,14 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
-  const initialPlanRef = useRef<GeoElement[] | undefined>(initialPlan);
+  const initialPlansRef = useRef<GeoElement[][] | undefined>(initialPlans);
   const initialPlanApplied = useRef(false);
   const toastTimeoutRef = useRef<number | null>(null);
   const parcelSavedStatesRef = useRef<Map<number, ParcelSavedState>>(new Map());
   const prevParcelIdxRef = useRef(0);
+  const renderScheduledRef = useRef(false);
+  const drawRef = useRef<() => void>(() => {});
+  const projCacheRef = useRef<{ key: string; value: ReturnType<typeof makeProjection> } | null>(null);
 
   useEffect(() => { elementsRef.current = elements; }, [elements]);
   useEffect(() => { selectedIdsRef.current = selectedIds; }, [selectedIds]);
@@ -790,6 +811,7 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
       const imgPath: string | undefined = catalogItem.itemRef?.topDownImagePath;
       if (imgPath && !imageCacheRef.current.has(catalogItem.type)) {
         const img = new Image();
+        img.onload = () => requestRender();
         img.src = imgPath;
         imageCacheRef.current.set(catalogItem.type, img);
       }
@@ -814,7 +836,7 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
       vp: { ...vp.current },
     });
 
-    // Load or initialise state for new parcel
+    // Load or initialize state for the new parcel
     const saved = parcelSavedStatesRef.current.get(activeParcelIdx);
     const newElements = saved ? saved.elements : [];
     elementsRef.current = newElements;
@@ -823,7 +845,7 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
       historyRef.current = saved.history;
       historyIndexRef.current = saved.historyIndex;
       vp.current = saved.vp;
-      vpInitialised.current = true;
+      vpInitialised.current = saved.vpInitialised ?? true;
       setCanUndo(saved.historyIndex > 0);
       setCanRedo(saved.historyIndex < saved.history.length - 1);
     } else {
@@ -892,9 +914,28 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
     return [wx * zoom * cos - wy * zoom * sin + x, wx * zoom * sin + wy * zoom * cos + y];
   }
 
+  function getProjection() {
+    const { w, h } = canvasSize.current;
+    const key = `${activeParcelIdx}:${w}:${h}`;
+    const cached = projCacheRef.current;
+    if (cached && cached.key === key) return cached.value;
+    const value = makeProjection(area.points, w, h, 80);
+    projCacheRef.current = { key, value };
+    return value;
+  }
+
+  function requestRender() {
+    if (renderScheduledRef.current) return;
+    renderScheduledRef.current = true;
+    requestAnimationFrame(() => {
+      renderScheduledRef.current = false;
+      drawRef.current();
+    });
+  }
+
   function fitParcel() {
     const { w, h } = canvasSize.current;
-    const { project, pixelsPerMetre } = makeProjection(area.points, w, h, 80);
+    const { project, pixelsPerMetre } = getProjection();
     const pts = area.points.map(project);
     const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
     const pw = Math.max(...xs) - Math.min(...xs), ph = Math.max(...ys) - Math.min(...ys);
@@ -904,6 +945,7 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
     vp.current = { x: w / 2 - cx * zoom, y: h / 2 - cy * zoom, zoom, angle: 0 };
     pixelsPerMetreRef.current = pixelsPerMetre;
     setZoomDisplay(Math.round(zoom * 100));
+    requestRender();
   }
 
   function showToast(message: string) {
@@ -974,7 +1016,7 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
       vpX * renderScale, vpY * renderScale
     );
 
-    const { project, pixelsPerMetre } = makeProjection(area.points, w, h, 80);
+    const { project, pixelsPerMetre } = getProjection();
     pixelsPerMetreRef.current = pixelsPerMetre;
     const worldPts = area.points.map(project);
 
@@ -1176,23 +1218,15 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
   });
 
 
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d")!;
-    let raf: number;
-
-    function render() {
+ useEffect(() => {
+    drawRef.current = () => {
+      const canvas = canvasRef.current;
       const { w, h } = canvasSize.current;
-      if (!w || !h) { raf = requestAnimationFrame(render); return; }
-      drawEditorScene(ctx, w, h);
-
-      raf = requestAnimationFrame(render);
-    }
-
-    render();
-    return () => cancelAnimationFrame(raf);
-  }, [area, editorMapStyle, satTilesVersion, satImageStatus, isMobile]);
+      if (!canvas || !w || !h) return;
+      drawEditorScene(canvas.getContext("2d")!, w, h);
+    };
+    requestRender();
+  });
 
 
   useEffect(() => {
@@ -1237,28 +1271,31 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
         if (!vpInitialised.current) {
           fitParcel();
           vpInitialised.current = true;
-          if (initialPlanRef.current && !initialPlanApplied.current) {
+          if (initialPlansRef.current && !initialPlanApplied.current) {
             initialPlanApplied.current = true;
-            const { project, pixelsPerMetre } = makeProjection(area.points, width, height, 80);
-            const restoredElements: PlacedElement[] = initialPlanRef.current.map(ge => {
-              const [px, py] = project([ge.lat, ge.lng]);
-              const wPx = Math.max(4, ge.wM * pixelsPerMetre);
-              const hPx = Math.max(4, ge.hM * pixelsPerMetre);
-              return {
-                id: genId(),
-                type: ge.t,
-                x: snapTo(px - wPx / 2),
-                y: snapTo(py - hPx / 2),
-                wPx,
-                hPx,
-                rotation: ge.rot,
-                ...(ge.note ? { note: ge.note } : {}),
-              };
+            const plans = initialPlansRef.current;
+
+            areas.forEach((a, idx) => {
+              if (idx === activeParcelIdx) return;
+              const geo = plans[idx];
+              if (!geo || geo.length === 0) return;
+              const proj = makeProjection(a.points, width, height, 80);
+              const els = geo.map(ge => geoElementToPlaced(ge, proj.project, proj.pixelsPerMetre));
+              parcelSavedStatesRef.current.set(idx, {
+                elements: els,
+                history: [[], els],
+                historyIndex: 1,
+                vp: { x: 0, y: 0, zoom: 1, angle: 0 },
+                vpInitialised: false,
+              });
             });
+            const { project, pixelsPerMetre } = makeProjection(area.points, width, height, 80);
+            const restoredElements = (plans[activeParcelIdx] ?? []).map(ge => geoElementToPlaced(ge, project, pixelsPerMetre));
             setElements(restoredElements);
             pushHistory(restoredElements);
           }
         }
+        requestRender();
       }
     });
     obs.observe(canvas.parentElement);
@@ -1285,6 +1322,7 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
       } else {
         vp.current = { ...vp.current, x: vp.current.x - e.deltaX, y: vp.current.y - e.deltaY };
       }
+      requestRender();
     }
     canvas.addEventListener("wheel", onWheel, { passive: false });
     return () => canvas.removeEventListener("wheel", onWheel);
@@ -1333,6 +1371,19 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
     return () => { window.removeEventListener("keydown", onKeyDown); window.removeEventListener("keyup", onKeyUp); };
   }, []);
 
+  function persistSession(activeElements: PlacedElement[]) {
+    const { w, h } = canvasSize.current;
+    if (!w || !h) return;
+    const plans = areas.map((a, idx) => {
+      const els = idx === activeParcelIdx
+        ? activeElements
+        : (parcelSavedStatesRef.current.get(idx)?.elements ?? []);
+      const { unproject, pixelsPerMetre } = makeProjection(a.points, w, h, 80);
+      return els.map(el => placedElementToGeo(el, unproject, pixelsPerMetre));
+    });
+    saveSession({ page: "editor", areas, plans });
+  }
+
   function pushHistory(newElements: PlacedElement[]) {
     let newHistory = historyRef.current.slice(0, historyIndexRef.current + 1);
     newHistory.push([...newElements]);
@@ -1341,24 +1392,29 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
     historyIndexRef.current = newHistory.length - 1;
     setCanUndo(historyIndexRef.current > 0);
     setCanRedo(false);
+    persistSession(newElements);
   }
 
   function undo() {
     if (historyIndexRef.current <= 0) return;
     historyIndexRef.current--;
-    setElements([...historyRef.current[historyIndexRef.current]]);
+    const els = historyRef.current[historyIndexRef.current];
+    setElements([...els]);
     setSelectedIds([]);
     setCanUndo(historyIndexRef.current > 0);
     setCanRedo(historyIndexRef.current < historyRef.current.length - 1);
+    persistSession(els);
   }
 
   function redo() {
     if (historyIndexRef.current >= historyRef.current.length - 1) return;
     historyIndexRef.current++;
-    setElements([...historyRef.current[historyIndexRef.current]]);
+    const els = historyRef.current[historyIndexRef.current];
+    setElements([...els]);
     setSelectedIds([]);
     setCanUndo(historyIndexRef.current > 0);
     setCanRedo(historyIndexRef.current < historyRef.current.length - 1);
+    persistSession(els);
   }
 
   function rotateViewport(delta: number) {
@@ -1368,6 +1424,7 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
     const c = Math.cos(delta), s = Math.sin(delta);
     const dx = x - cx, dy = y - cy;
     vp.current = { zoom, angle: angle + delta, x: cx + dx * c - dy * s, y: cy + dx * s + dy * c };
+    requestRender();
   }
 
   function normalizeDeg(d: number) { return ((d % 360) + 360) % 360; }
@@ -1424,7 +1481,7 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
   ): boolean {
     const { w, h } = canvasSize.current;
     if (!w || !h) return false;
-    const { project } = makeProjection(area.points, w, h, 80);
+    const { project } = getProjection();
     if (!rectWithinPolygon(x, y, wPx, hPx, area.points.map(project))) return false;
 
     const m = OBJECT_MARGIN_PX;
@@ -1497,6 +1554,7 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
     if (panState.current) {
       const { startX, startY, startVpX, startVpY } = panState.current;
       vp.current = { ...vp.current, x: startVpX + sx - startX, y: startVpY + sy - startY };
+      requestRender();
       return;
     }
 
@@ -1692,6 +1750,7 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
         y: cy - (wx * newZoom * s + wy * newZoom * c),
       };
       setZoomDisplay(Math.round(newZoom * 100));
+      requestRender();
       return;
     }
 
@@ -1745,12 +1804,12 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
     if (panState.current) {
       const { startX, startY, startVpX, startVpY } = panState.current;
       vp.current = { ...vp.current, x: startVpX + sx - startX, y: startVpY + sy - startY };
+      requestRender();
     }
   }
 
   function onTouchEnd(e: React.TouchEvent) {
     if (e.touches.length > 0) {
-      // A finger lifted but others remain — end pinch, keep touch active
       pinchRef.current = null;
       return;
     }
@@ -1783,7 +1842,7 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
     const centre = { x: snapTo(cwx - wPx / 2), y: snapTo(cwy - hPx / 2) };
     if (canPlaceElementAt(centre.x, centre.y, wPx, hPx)) return centre;
 
-    const { project } = makeProjection(area.points, w, h, 80);
+    const { project } = getProjection();
     const pts = area.points.map(project);
     const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
     const minX = Math.min(...xs), maxX = Math.max(...xs);
@@ -1882,7 +1941,7 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
     if (!exportCtx) return;
 
     const savedVp = { ...vp.current };
-    const { project } = makeProjection(area.points, w, h, 80);
+    const { project } = getProjection();
     const pts = area.points.map(project);
     const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
     const pw = Math.max(...xs) - Math.min(...xs), ph = Math.max(...ys) - Math.min(...ys);
@@ -1916,20 +1975,9 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
     const { w, h } = canvasSize.current;
     if (!w || !h) return;
 
-    const { unproject, pixelsPerMetre } = makeProjection(area.points, w, h, 80);
+    const { unproject, pixelsPerMetre } = getProjection();
 
-    const geoElements: GeoElement[] = elements.map(el => {
-      const [lat, lng] = unproject([el.x + el.wPx / 2, el.y + el.hPx / 2]);
-      return {
-        t: el.type,
-        lat: +lat.toFixed(7),
-        lng: +lng.toFixed(7),
-        wM: +(el.wPx / pixelsPerMetre).toFixed(3),
-        hM: +(el.hPx / pixelsPerMetre).toFixed(3),
-        rot: el.rotation || 0,
-        ...(el.note ? { note: el.note } : {}),
-      };
-    });
+    const geoElements: GeoElement[] = elements.map(el => placedElementToGeo(el, unproject, pixelsPerMetre));
 
     const payload = {
       v: 1,
@@ -1946,9 +1994,7 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
       elements: geoElements,
     };
 
-    const bytes = new TextEncoder().encode(JSON.stringify(payload));
-    const b64 = btoa(Array.from(bytes, b => String.fromCharCode(b)).join(''));
-    const shareUrl = `${window.location.origin}${window.location.pathname}#plan=${b64}`;
+    const shareUrl = `${window.location.origin}${window.location.pathname}#plan=${encodeHashPayload(payload)}`;
 
     navigator.clipboard.writeText(shareUrl).then(() => {
       showToast("Odkaz zkopírován do schránky");
@@ -1957,11 +2003,8 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
 
 
   if (isMobile) {
-    const tempColor = !planStats || planStats.tempDelta === 0 ? "#2e3a1f66"
-      : planStats.tempDelta < -1.5 ? "#2a7d4f"
-      : planStats.tempDelta < -0.5 ? "#5a9e72"
-      : "#8ab89a";
-    const tempLabel = !planStats || planStats.tempDelta === 0 ? "—" : `${planStats.tempDelta.toFixed(1)} °C`;
+    const tempColor = tempDeltaColor(planStats?.tempDelta);
+    const tempLabel = tempDeltaLabel(planStats?.tempDelta);
     const closeSheet = () => setMobileSheet("none");
     const sheetBase: React.CSSProperties = {
       position: "absolute", left: 0, right: 0, bottom: 0, zIndex: 30,

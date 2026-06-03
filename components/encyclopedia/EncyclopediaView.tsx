@@ -3,7 +3,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import dynamic from "next/dynamic";
-import { ITEMS, type Item } from "./itemData";
+import { ITEMS, type Item, COST_LABEL, MAINT_LABEL } from "./itemData";
+import { normalizeSearchText } from "@/lib/search";
+import { formatCZK } from "@/lib/format";
 import { Search, ChevronDown, X, RotateCcw, AlertTriangle } from 'lucide-react';
 
 const StlPreview = dynamic(() => import("../StlPreview"), { ssr: false });
@@ -14,15 +16,6 @@ const COST_COLOR: Record<string, string> = {
   high: "bg-red-100 text-red-700",
 };
 const BADGE = "text-xs font-medium px-2.5 py-1 rounded-full";
-const COST_LABEL = { low: "Nízké", medium: "Střední", high: "Vysoké" } as const;
-const MAINT_LABEL = { low: "Nízká", medium: "Střední", high: "Vysoká" } as const;
-
-function normalizeSearchText(value: string): string {
-  return value
-    .toLocaleLowerCase("cs-CZ")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
-}
 
 function splitSearchTerms(value: string): string[] {
   const cleaned = normalizeSearchText(value).replace(/[^a-z0-9]+/g, " ").trim();
@@ -204,10 +197,6 @@ function SortDropdown({
       )}
     </div>
   );
-}
-
-function formatCZK(value: number): string {
-  return `${value.toLocaleString("cs-CZ")} Kč`;
 }
 
 function getItemPriceLabel(item: Item): string {

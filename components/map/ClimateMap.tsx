@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { loadLeaflet } from "@/lib/leaflet";
+import { loadCzFeature } from "@/lib/czBorder";
 
 interface ClimateArea {
   points: [number, number][];
@@ -18,15 +20,12 @@ interface ClimateSample {
 const PARCEL_GRID_SIZE = 5;
 const CZECH_GRID_SIZE = 14;
 const climateCache = new Map<string, Promise<ClimateSample[]>>();
-let leafletLoader: Promise<any> | null = null;
 const CZECH_BOUNDS = {
   north: 51.10,
   south: 48.50,
   east: 18.95,
   west: 12.05,
 };
-const CZECH_GEOJSON_URL = "https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson";
-let czFeaturePromise: Promise<any | null> | null = null;
 
 interface CityThermalOverlay {
   labelCz: string;
@@ -69,41 +68,6 @@ function buildArcGISExportUrl(serviceUrl: string, b: CityThermalOverlay["bounds"
   url.searchParams.set("transparent", "true");
   url.searchParams.set("f", "image");
   return url.toString();
-}
-
-function loadLeaflet(): Promise<any> {
-  if (typeof window === "undefined") {
-    return Promise.reject(new Error("Leaflet can only be loaded in browser"));
-  }
-  if ((window as any).L) return Promise.resolve((window as any).L);
-  if (leafletLoader) return leafletLoader;
-
-  leafletLoader = new Promise((resolve, reject) => {
-    if (!document.querySelector('link[data-climate-leaflet="1"]')) {
-      const link = document.createElement("link");
-      link.rel = "stylesheet";
-      link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
-      link.setAttribute("data-climate-leaflet", "1");
-      document.head.appendChild(link);
-    }
-
-    const existingScript = document.querySelector('script[data-climate-leaflet="1"]') as HTMLScriptElement | null;
-    if (existingScript) {
-      existingScript.addEventListener("load", () => resolve((window as any).L));
-      existingScript.addEventListener("error", () => reject(new Error("Failed to load Leaflet script")));
-      return;
-    }
-
-    const script = document.createElement("script");
-    script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
-    script.async = true;
-    script.setAttribute("data-climate-leaflet", "1");
-    script.onload = () => resolve((window as any).L);
-    script.onerror = () => reject(new Error("Failed to load Leaflet script"));
-    document.head.appendChild(script);
-  });
-
-  return leafletLoader;
 }
 
 function buildSampleGrid(bounds: ClimateArea["bounds"], gridSize: number, expandRatio = 0.3): [number, number][] {
@@ -288,15 +252,6 @@ function featureToLatLngRings(feature: any): [number, number][][] {
   return rings;
 }
 
-async function loadCzechFeature(): Promise<any | null> {
-  if (!czFeaturePromise) {
-    czFeaturePromise = fetch(CZECH_GEOJSON_URL)
-      .then(res => (res.ok ? res.json() : null))
-      .then(json => json?.features?.find((f: any) => f?.properties?.ISO_A2 === "CZ") ?? null)
-      .catch(() => null);
-  }
-  return czFeaturePromise;
-}
 
 function colorFromTemperature(temp: number, min: number, max: number): string {
   const safeSpan = Math.max(max - min, 0.001);
@@ -508,7 +463,7 @@ export default function ClimateMap({
         let czLayer: any = null;
         let czFeature: any = null;
         if (mode === "czech") {
-          czFeature = await loadCzechFeature();
+          czFeature = await loadCzFeature();
           if (czFeature) {
             czLayer = L.geoJSON(czFeature, {
               style: { color: "#2e3a1f", weight: 2, fill: false, opacity: 0.9 },

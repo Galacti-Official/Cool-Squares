@@ -1,34 +1,19 @@
 "use client";
 
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
-import ParcelEditor, { type GeoElement } from "./ParcelEditor";
+import ParcelEditor from "./ParcelEditor";
 import { formatAreaByMagnitude, formatDistanceByMagnitude } from "./areaFormat";
 import ClimateMap, { addClimateLayersToMap } from "./ClimateMap";
 import Image from "next/image";
 import { ArrowLeft, LayoutGrid, Thermometer, X, Pencil, type LucideIcon } from "lucide-react";
+import type { GeoElement, SelectedArea } from "@/lib/types";
+import { encodeHashPayload, decodeHashPayload } from "@/lib/hash";
+import { loadSession, saveSession, clearSession } from "@/lib/session";
+import { loadLeaflet } from "@/lib/leaflet";
+import { loadCzFeature } from "@/lib/czBorder";
 
 type Mode = "idle" | "drawing";
 type AppPage = "map" | "results" | "editor";
-
-interface SelectedArea {
-  points: [number, number][];
-  bounds: { north: number; south: number; east: number; west: number };
-  areaSqKm: number;
-}
-
-function encodeHashPayload(payload: unknown): string {
-  const bytes = new TextEncoder().encode(JSON.stringify(payload));
-  return btoa(Array.from(bytes, b => String.fromCharCode(b)).join(''));
-}
-
-function decodeHashPayload<T>(value: string): T | null {
-  try {
-    const bytes = Uint8Array.from(atob(value), c => c.charCodeAt(0));
-    return JSON.parse(new TextDecoder().decode(bytes)) as T;
-  } catch {
-    return null;
-  }
-}
 
 function serializeArea(area: SelectedArea) {
   return {
@@ -112,31 +97,37 @@ function MiniMap({ area }: { area: SelectedArea }) {
   const mapRef = useRef<any>(null);
 
   useEffect(() => {
-    if (typeof window === "undefined" || mapRef.current || !ref.current) return;
-    const L = (window as any).L;
-    if (!L) return;
+    let cancelled = false;
+    loadLeaflet().then((L) => {
+      if (cancelled || mapRef.current || !ref.current) return;
 
-    const map = L.map(ref.current, {
-      zoomControl: false, dragging: false, scrollWheelZoom: false,
-      doubleClickZoom: false, touchZoom: false, attributionControl: false,
-    });
-    mapRef.current = map;
+      const map = L.map(ref.current, {
+        zoomControl: false, dragging: false, scrollWheelZoom: false,
+        doubleClickZoom: false, touchZoom: false, attributionControl: false,
+      });
+      mapRef.current = map;
 
-    L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
-      subdomains: "abcd", maxZoom: 20, opacity: 0.6,
-    }).addTo(map);
+      L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+        subdomains: "abcd", maxZoom: 20, opacity: 0.6,
+      }).addTo(map);
 
-    const world: [number, number][] = [[-90, -180], [-90, 180], [90, 180], [90, -180]];
-    L.polygon([world, area.points], {
-      color: "transparent", fillColor: "#F4F5E0",
-      fillOpacity: 0.85, fillRule: "evenodd", interactive: false,
-    }).addTo(map);
+      const world: [number, number][] = [[-90, -180], [-90, 180], [90, 180], [90, -180]];
+      L.polygon([world, area.points], {
+        color: "transparent", fillColor: "#F4F5E0",
+        fillOpacity: 0.85, fillRule: "evenodd", interactive: false,
+      }).addTo(map);
 
-    const poly = L.polygon(area.points, {
-      color: "#2e3a1f", weight: 2.5, fill: false, interactive: false,
-    }).addTo(map);
+      const poly = L.polygon(area.points, {
+        color: "#2e3a1f", weight: 2.5, fill: false, interactive: false,
+      }).addTo(map);
 
-    map.fitBounds(poly.getBounds(), { padding: [24, 24] });
+      map.fitBounds(poly.getBounds(), { padding: [24, 24] });
+    }).catch(() => {});
+
+    return () => {
+      cancelled = true;
+      if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; }
+    };
   }, []);
 
   return <div ref={ref} className="w-full h-full" />;
@@ -563,9 +554,8 @@ const MapView = forwardRef<{ startNewDrawing: () => void }, { onAreaSelected: (a
 
     const mapRef = useRef<HTMLDivElement>(null);
     const leafletMapRef = useRef<any>(null);
-    const czGeoJsonRef = useRef<any>(null);
-    const bgLayerRef = useRef<any>(null);
-    const clipLayerRef = useRef<any>(null);
+    const tileLayerRef = useRef<any>(null);
+    const czMaskRef = useRef<any>(null);
     const [mapReady, setMapReady] = useState(false);
     const [mapStyle, setMapStyle] = useState<"light" | "satellite" | "heat">("light");
     const [mode, setMode] = useState<Mode>("idle");
@@ -599,27 +589,14 @@ const MapView = forwardRef<{ startNewDrawing: () => void }, { onAreaSelected: (a
 
     useEffect(() => {
       if (typeof window === "undefined" || leafletMapRef.current) return;
+      let cancelled = false;
 
-      const link = document.createElement("link");
-      link.rel = "stylesheet";
-      link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
-      document.head.appendChild(link);
+      loadLeaflet()
+        .then((L) => { if (!cancelled) initMap(L); })
+        .catch((e) => console.error("Failed to load Leaflet", e));
 
-      const existingScript = document.querySelector('script[src*="leaflet"]');
-      if (existingScript) {
-        if ((window as any).L) { initMap(); }
-        else { existingScript.addEventListener("load", initMap); }
-        return;
-      }
-
-      const script = document.createElement("script");
-      script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
-      script.onload = initMap;
-      document.head.appendChild(script);
-
-      async function initMap() {
-        const L = (window as any).L;
-        if (!L || !mapRef.current || leafletMapRef.current) return;
+      async function initMap(L: any) {
+        if (cancelled || !mapRef.current || leafletMapRef.current) return;
 
         const map = L.map(mapRef.current, {
           center: [49.75, 15.5],
@@ -630,60 +607,34 @@ const MapView = forwardRef<{ startNewDrawing: () => void }, { onAreaSelected: (a
         L.control.zoom({ position: "bottomright" }).addTo(map);
         leafletMapRef.current = map;
 
-        let czFeature: any = null;
-        try {
-          const res = await fetch("https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson");
-          const data = await res.json();
-          czFeature = data.features.find((f: any) => f.properties.ISO_A2 === "CZ");
-          czGeoJsonRef.current = czFeature;
-        } catch (e) { console.error("Failed to load CZ GeoJSON", e); }
+        const czFeature = await loadCzFeature();
+        if (cancelled) return;
 
-        map.createPane("bgPane").style.zIndex = "199";
         map.createPane("czPane").style.zIndex = "200";
+        map.createPane("maskPane").style.zIndex = "250";
 
-        bgLayerRef.current = L.tileLayer(LIGHT_TILES, { attribution: "© OpenStreetMap contributors © CARTO", subdomains: "abcd", maxZoom: 19, pane: "bgPane", opacity: 0.15 }).addTo(map);
-        clipLayerRef.current = L.tileLayer(LIGHT_TILES, { attribution: "", subdomains: "abcd", maxZoom: 19, pane: "czPane" }).addTo(map);
+        tileLayerRef.current = L.tileLayer(LIGHT_TILES, { attribution: "© OpenStreetMap contributors © CARTO", subdomains: "abcd", maxZoom: 19, pane: "czPane" }).addTo(map);
 
         if (czFeature) {
           const czBounds = L.geoJSON(czFeature).getBounds();
           map.setMaxBounds(czBounds.pad(0.2));
           map.fitBounds(czBounds, { padding: [40, 40] });
 
-          const applyClip = () => {
-            const paneEl = map.getPane("czPane") as HTMLElement;
-            if (!paneEl) return;
-            const old = paneEl.querySelector("svg.cz-clip");
-            if (old) old.remove();
-            const size = map.getSize();
-            const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-            svg.setAttribute("class", "cz-clip");
-            svg.style.cssText = `position:absolute;top:0;left:0;width:${size.x}px;height:${size.y}px;pointer-events:none;overflow:visible;`;
-            const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
-            const clipPath = document.createElementNS("http://www.w3.org/2000/svg", "clipPath");
-            clipPath.setAttribute("id", "cz-clip-path");
-            const toPixel = (coord: number[]) => {
-              const pt = map.latLngToContainerPoint(L.latLng(coord[1], coord[0]));
-              return `${pt.x},${pt.y}`;
-            };
-            const geom = czFeature.geometry;
-            const polys = geom.type === "Polygon" ? [geom.coordinates] : geom.coordinates;
-            let d = "";
-            polys.forEach((poly: number[][][]) => {
-              poly.forEach((ring: number[][]) => { d += "M " + ring.map(toPixel).join(" L ") + " Z "; });
-            });
-            const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-            path.setAttribute("d", d);
-            path.setAttribute("fill-rule", "evenodd");
-            clipPath.appendChild(path);
-            defs.appendChild(clipPath);
-            svg.appendChild(defs);
-            paneEl.style.clipPath = "";
-            paneEl.insertBefore(svg, paneEl.firstChild);
-            paneEl.style.clipPath = `url(#cz-clip-path)`;
-          };
+          // Dim everything outside Czechia with an even-odd "world minus CZ" mask.
+          // A vector polygon follows Leaflet's own pan/zoom transforms, so it never
+          // drifts away from the tiles the way the old SVG clip-path on the pane did.
+          const geom = czFeature.geometry;
+          const polys = geom.type === "Polygon" ? [geom.coordinates] : geom.coordinates;
+          const czRings: [number, number][][] = [];
+          polys.forEach((poly: number[][][]) => {
+            poly.forEach((ring: number[][]) => czRings.push(ring.map((c) => [c[1], c[0]] as [number, number])));
+          });
+          const worldRing: [number, number][] = [[-90, -180], [-90, 180], [90, 180], [90, -180]];
+          czMaskRef.current = L.polygon([worldRing, ...czRings], {
+            stroke: false, fillColor: "#F4F5E0", fillOpacity: 0.85,
+            fillRule: "evenodd", interactive: false, pane: "maskPane",
+          }).addTo(map);
 
-          applyClip();
-          map.on("moveend zoomend resize viewreset", applyClip);
           L.geoJSON(czFeature, { style: { color: "#2e3a1f", weight: 2, fill: false, opacity: 0.7 }, interactive: false }).addTo(map);
         }
 
@@ -716,19 +667,31 @@ const MapView = forwardRef<{ startNewDrawing: () => void }, { onAreaSelected: (a
 
         setMapReady(true);
       }
+
+      return () => {
+        cancelled = true;
+        if (leafletMapRef.current) {
+          leafletMapRef.current.remove();
+          leafletMapRef.current = null;
+        }
+        tileLayerRef.current = null;
+        czMaskRef.current = null;
+        heatLayersRef.current = [];
+        combinedMaskRef.current = null;
+        finalizedPolygonLayersRef.current = [];
+      };
     }, []);
 
     useEffect(() => {
-      const bgLayer = bgLayerRef.current;
-      const clipLayer = clipLayerRef.current;
+      const tileLayer = tileLayerRef.current;
+      const czMask = czMaskRef.current;
       const map = leafletMapRef.current;
       const L = (window as any).L;
-      if (!bgLayer || !clipLayer || !map || !L) return;
+      if (!tileLayer || !map || !L) return;
 
       if (mapStyle === "heat") {
-        bgLayer.setUrl(LIGHT_TILES);
-        clipLayer.setUrl(LIGHT_TILES);
-        bgLayer.setOpacity(0.15);
+        tileLayer.setUrl(LIGHT_TILES);
+        czMask?.setStyle({ fillOpacity: 0.85 });
         if (heatLayersRef.current.length === 0) {
           addClimateLayersToMap(L, map, "czPane").then(layers => {
             heatLayersRef.current = layers;
@@ -738,10 +701,8 @@ const MapView = forwardRef<{ startNewDrawing: () => void }, { onAreaSelected: (a
         heatLayersRef.current.forEach(l => map.removeLayer(l));
         heatLayersRef.current = [];
         const isSatellite = mapStyle === "satellite";
-        const tileUrl = isSatellite ? SATELLITE_TILES : LIGHT_TILES;
-        bgLayer.setUrl(tileUrl);
-        clipLayer.setUrl(tileUrl);
-        bgLayer.setOpacity(isSatellite ? 0.28 : 0.15);
+        tileLayer.setUrl(isSatellite ? SATELLITE_TILES : LIGHT_TILES);
+        czMask?.setStyle({ fillOpacity: isSatellite ? 0.72 : 0.85 });
       }
     }, [mapStyle]);
 
@@ -903,7 +864,7 @@ export default function App() {
   const [page, setPage] = useState<AppPage>("map");
   const [selectedAreas, setSelectedAreas] = useState<SelectedArea[]>([]);
   const [showParcelDialog, setShowParcelDialog] = useState(false);
-  const [initialPlan, setInitialPlan] = useState<GeoElement[] | undefined>(undefined);
+  const [initialPlans, setInitialPlans] = useState<GeoElement[][] | undefined>(undefined);
   const mapViewRef = useRef<{ startNewDrawing: () => void }>(null);
   const pendingAreasRef = useRef<SelectedArea[]>([]);
 
@@ -916,7 +877,7 @@ export default function App() {
         setPage("results");
       } else if (data?.v === 1 && data.area?.points) {
         setSelectedAreas([data.area]);
-        setInitialPlan(undefined);
+        setInitialPlans(undefined);
         setPage("results");
       }
       return;
@@ -925,9 +886,18 @@ export default function App() {
       const data = decodeHashPayload<{ v: number; area?: SelectedArea; elements?: GeoElement[] }>(hash.slice(6));
       if (data?.v === 1 && data.area?.points && Array.isArray(data.elements)) {
         setSelectedAreas([data.area]);
-        setInitialPlan(data.elements);
+        setInitialPlans([data.elements]);
         setPage("editor");
       }
+      return;
+    }
+
+    // No shared link — restore the last autosaved session, if any.
+    const session = loadSession();
+    if (session) {
+      setSelectedAreas(session.areas);
+      setInitialPlans(session.plans);
+      setPage(session.page);
     }
   }, []);
 
@@ -937,10 +907,13 @@ export default function App() {
   }
 
   function handleContinueToResults() {
-    setSelectedAreas(pendingAreasRef.current);
+    const areas = pendingAreasRef.current;
+    setSelectedAreas(areas);
     setShowParcelDialog(false);
-    setInitialPlan(undefined);
+    setInitialPlans(undefined);
     setPage("results");
+    // Fresh selection — start a new autosaved session with no plans yet.
+    saveSession({ page: "results", areas, plans: [] });
   }
 
   function handleAddAnother() {
@@ -952,6 +925,9 @@ export default function App() {
     setPage("map");
     pendingAreasRef.current = [];
     setSelectedAreas([]);
+    setInitialPlans(undefined);
+    // Returning to the map starts over — drop the autosaved session.
+    clearSession();
   }
 
   const pendingArea = pendingAreasRef.current[pendingAreasRef.current.length - 1];
@@ -973,15 +949,21 @@ export default function App() {
         <ResultsPage
           areas={selectedAreas}
           onBack={handleBack}
-          onOpenEditor={() => setPage("editor")}
+          onOpenEditor={() => {
+            setPage("editor");
+            saveSession({ page: "editor", areas: selectedAreas });
+          }}
         />
       )}
 
       {page === "editor" && selectedAreas.length > 0 && (
         <ParcelEditor
           areas={selectedAreas}
-          onBack={() => setPage("results")}
-          initialPlan={initialPlan}
+          onBack={() => {
+            setPage("results");
+            saveSession({ page: "results", areas: selectedAreas });
+          }}
+          initialPlans={initialPlans}
         />
       )}
     </div>

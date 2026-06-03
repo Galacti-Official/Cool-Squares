@@ -1,7 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import StlPreview from "./StlPreview";
+import dynamic from "next/dynamic";
+
+const StlPreview = dynamic(() => import("./StlPreview"), {
+  ssr: false,
+  loading: () => <div className="h-full w-full animate-pulse rounded-2xl bg-fg/40" />,
+});
 
 const HERO_MODELS = [
   {
