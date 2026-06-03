@@ -340,17 +340,6 @@ function buildCanvasTileLayer(
   const expected = gridSize * gridSize;
   if (samples.length !== expected) return null;
 
-<<<<<<< Updated upstream
-  const width = 512;
-  const height = 512;
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return null;
-
-=======
->>>>>>> Stashed changes
   const seaLevelTemps2d: number[][] = [];
   const elevations2d: number[][] = [];
   for (let y = 0; y < gridSize; y++) {
@@ -359,14 +348,6 @@ function buildCanvasTileLayer(
     elevations2d.push(row.map((s) => s.elevation));
   }
 
-<<<<<<< Updated upstream
-  const imageData = ctx.createImageData(width, height);
-  const data = imageData.data;
-  // HSL(hue, 72%, 52%) constants — s=0.72, l=0.52
-  const C = 0.6912; // (1 - |2l-1|) * s
-  const M = 0.1744; // l - C/2
-  const safeSpan = Math.max(maxTemp - minTemp, 0.001);
-=======
   const ClimateTileLayer = L.GridLayer.extend({
     createTile(coords: any, done: (err: any, tile: HTMLCanvasElement) => void) {
       const tile = document.createElement("canvas");
@@ -375,7 +356,6 @@ function buildCanvasTileLayer(
       tile.height = size.y;
       const ctx = tile.getContext("2d");
       if (!ctx) { done(null, tile); return tile; }
->>>>>>> Stashed changes
 
       const tileBounds = this._tileCoordsToBounds(coords);
       const tileNorth = tileBounds.getNorth();
@@ -395,30 +375,10 @@ function buildCanvasTileLayer(
           const gx = ((lng - bounds.west) / (bounds.east - bounds.west)) * (gridSize - 1);
           const idx = (py * size.x + px) * 4;
 
-<<<<<<< Updated upstream
-      const t = Math.min(1, Math.max(0, (temp - minTemp) / safeSpan));
-      const hue = 210 - t * 180;
-      const X = C * (1 - Math.abs(((hue / 60) % 2) - 1));
-      let cr = 0, cg = 0, cb = 0;
-      if (hue < 60) { cr = C; cg = X; }
-      else if (hue < 120) { cr = X; cg = C; }
-      else if (hue < 180) { cg = C; cb = X; }
-      else if (hue < 240) { cg = X; cb = C; }
-      else if (hue < 300) { cr = X; cb = C; }
-      else { cr = C; cb = X; }
-      const idx = (py * width + px) * 4;
-      data[idx] = Math.round((cr + M) * 255);
-      data[idx + 1] = Math.round((cg + M) * 255);
-      data[idx + 2] = Math.round((cb + M) * 255);
-      data[idx + 3] = 150;
-    }
-  }
-=======
           if (gy < 0 || gy > gridSize - 1 || gx < 0 || gx > gridSize - 1) {
             data[idx + 3] = 0;
             continue;
           }
->>>>>>> Stashed changes
 
           const y0 = Math.min(Math.floor(gy), gridSize - 2);
           const y1 = y0 + 1;
