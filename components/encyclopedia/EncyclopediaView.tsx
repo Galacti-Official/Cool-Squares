@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { ITEMS, CATEGORIES, type Item, type Category } from "./itemData";
+import { ITEMS, type Item } from "./itemData";
 import { Search, ChevronDown, X } from 'lucide-react';
 
 const COST_COLOR: Record<string, string> = {
@@ -45,8 +45,8 @@ function getMaintenanceSearchAliases(maintenance: Item["maintenance"]): string[]
   return ["vysoka", "vysoke", "narocna", "high", "demanding"];
 }
 
-function getWaterSearchAliases(waterNeeded: boolean): string[] {
-  if (waterNeeded) return ["voda", "zavlaha", "zalivka", "water", "watering"];
+function getWaterSearchAliases(waterFrequency?: string): string[] {
+  if (waterFrequency) return ["voda", "zavlaha", "zalivka", "water", "watering"];
   return ["bez-vody", "bezvody", "bez vody", "sucho", "dry", "no-water"];
 }
 
@@ -54,7 +54,6 @@ interface ItemSearchIndex {
   item: Item;
   name: string;
   description: string;
-  category: string;
   material: string;
   dimensions: string;
   weight: string;
@@ -68,7 +67,6 @@ function buildSearchIndex(item: Item): ItemSearchIndex {
     item,
     name: normalizeSearchText(item.name),
     description: normalizeSearchText(item.description),
-    category: normalizeSearchText(item.category),
     material: normalizeSearchText(item.material),
     dimensions: normalizeSearchText(item.dimensions),
     weight: normalizeSearchText(item.weight),
@@ -77,7 +75,7 @@ function buildSearchIndex(item: Item): ItemSearchIndex {
     aliases: [
       ...getCostSearchAliases(item.cost),
       ...getMaintenanceSearchAliases(item.maintenance),
-      ...getWaterSearchAliases(item.waterNeeded),
+      ...getWaterSearchAliases(item.waterFrequency),
       normalizeSearchText(COST_LABEL[item.cost]),
       normalizeSearchText(MAINT_LABEL[item.maintenance]),
     ],
@@ -96,10 +94,6 @@ function scoreSearchMatch(index: ItemSearchIndex, query: string, terms: string[]
     }
     if (index.tags.some((tag) => tag.includes(term))) {
       score += 30;
-      matched = true;
-    }
-    if (index.category.includes(term)) {
-      score += 24;
       matched = true;
     }
     if (index.material.includes(term)) {
@@ -131,7 +125,6 @@ function scoreSearchMatch(index: ItemSearchIndex, query: string, terms: string[]
   else if (index.name.includes(query)) score += 58;
 
   if (index.tags.some((tag) => tag.includes(query))) score += 40;
-  if (index.category.includes(query)) score += 34;
   if (index.aliases.some((alias) => alias.includes(query))) score += 28;
   if (index.description.includes(query)) score += 20;
 
@@ -257,7 +250,6 @@ function ItemCard({ item, onClick }: { item: Item; onClick: () => void }) {
           <h3 className="font-display text-lg text-text leading-tight group-hover:text-btn-dark transition-colors">
             {item.name}
           </h3>
-          <p className="text-xs text-text-light mt-0.5">{item.category}</p>
         </div>
       </div>
 
@@ -274,9 +266,9 @@ function ItemCard({ item, onClick }: { item: Item; onClick: () => void }) {
         <span className={`${BADGE} bg-fg text-text-mid`}>
           Údržba: {MAINT_LABEL[item.maintenance]}
         </span>
-        {!item.waterNeeded && (
-          <span className={`${BADGE} bg-fg text-text-mid`}>Bez potřeby vody</span>
-        )}
+        <span className={`${BADGE} bg-fg text-text-mid`}>
+          Zálivka: {item.waterFrequency ?? "Bez potřeby"}
+        </span>
       </div>
     </button>
   );
@@ -297,7 +289,6 @@ function DetailPanel({ item, onClose }: { item: Item; onClose: () => void }) {
           <span className="text-4xl">{item.emoji}</span>
           <div className="flex-1 min-w-0">
             <h2 className="font-display text-2xl text-text leading-tight">{item.name}</h2>
-            <p className="text-sm text-text-light">{item.category}</p>
           </div>
           <button
             onClick={onClose}
@@ -334,7 +325,7 @@ function DetailPanel({ item, onClose }: { item: Item; onClose: () => void }) {
               { label: "Materiál", value: item.material },
               { label: "Hmotnost", value: item.weight },
               { label: "Rozměry", value: item.dimensions },
-              { label: "Potřeba vody", value: item.waterNeeded ? "Ano" : "Ne" },
+              { label: "Zálivka", value: item.waterFrequency ?? "Bez potřeby" },
             ].map(({ label, value }) => (
               <div key={label} className="flex justify-between items-start py-2.5 px-3 rounded-xl bg-fg/60 border border-btn/15">
                 <span className="text-xs text-text-light">{label}</span>
@@ -376,7 +367,6 @@ function DetailPanel({ item, onClose }: { item: Item; onClose: () => void }) {
 export default function EncyclopediaView() {
   const searchParams = useSearchParams();
   const [search, setSearch] = useState("");
-  const [activeCategory, setActiveCategory] = useState<Category | "Vše">("Vše");
   const [sortBy, setSortBy] = useState<"name" | "cooling" | "cost">("name");
   const [selected, setSelected] = useState<Item | null>(null);
   const initialOpenApplied = useRef(false);
@@ -401,11 +391,7 @@ export default function EncyclopediaView() {
 
   const filtered = useMemo(() => {
     const comparator = getSortComparator(sortBy);
-    let items = ITEM_SEARCH_INDEX;
-
-    if (activeCategory !== "Vše") {
-      items = items.filter((entry) => entry.item.category === activeCategory);
-    }
+    const items = ITEM_SEARCH_INDEX;
 
     const query = normalizeSearchText(search.trim());
     const terms = splitSearchTerms(query);
@@ -422,7 +408,7 @@ export default function EncyclopediaView() {
       .filter((entry) => entry.score >= 0)
       .sort((a, b) => b.score - a.score || comparator(a.item, b.item))
       .map((entry) => entry.item);
-  }, [search, activeCategory, sortBy]);
+  }, [search, sortBy]);
 
   return (
     <div className="min-h-screen bg-fg/40">
@@ -434,7 +420,7 @@ export default function EncyclopediaView() {
             Prvky pro ochlazení města
           </h1>
           <p className="text-text-mid max-w-lg">
-            Všechny květináče, nádoby, povrchy a prvky pro zásahy do městských náměstí s kompletními specifikacemi a daty o ochlazení.
+            Přehled všech prvků pro zásahy do městských náměstí s kompletními specifikacemi a daty o ochlazení.
           </p>
         </div>
       </div>
@@ -456,25 +442,6 @@ export default function EncyclopediaView() {
           </div>
 
           <SortDropdown value={sortBy} onChange={setSortBy} />
-        </div>
-
-        <div className="flex flex-wrap gap-2 mb-8">
-          {(["Vše", ...CATEGORIES] as const).map((cat) => (
-            <button
-              key={cat}
-              onClick={() => setActiveCategory(cat)}
-              className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${
-                activeCategory === cat
-                  ? "bg-text text-bg shadow-sm"
-                  : "bg-bg border border-btn/40 text-text-mid hover:border-btn hover:text-text"
-              }`}
-            >
-              {cat}
-              <span className="ml-1.5 text-xs opacity-60">
-                {cat === "Vše" ? ITEMS.length : ITEMS.filter((i) => i.category === cat).length}
-              </span>
-            </button>
-          ))}
         </div>
 
         {filtered.length === 0 ? (

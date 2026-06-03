@@ -1,5 +1,3 @@
-export type Category = "Květináče" | "Nádoby" | "Půdní pokryv" | "Posezení";
-
 export interface ItemDimensions {
   width: number;
   depth: number;
@@ -18,7 +16,6 @@ export function formatDimensions(dimensions: ItemDimensions): string {
 export interface Item {
   id: string;
   name: string;
-  category: Category;
   emoji: string;
   description: string;
   coolingEffect: number;
@@ -33,7 +30,7 @@ export interface Item {
   modelPath?: string;
   topDownImagePath?: string;
   dimensionsM?: ItemDimensions;
-  waterNeeded: boolean;
+  waterFrequency?: string;
   tags: string[];
   specs: Record<string, string>;
 }
@@ -48,6 +45,11 @@ const rostlinnaStenaDimensions: ItemDimensions = {
   depth: 2,
   height: 3,
 };
+const zastineneParkovaciMistoDimensions: ItemDimensions = {
+  width: 2,
+  depth: 3,
+  height: 5,
+};
 const rostlinnaBranaModelPath = encodeURI("/Rostliná brána.stl");
 const rostlinnaStenaModelPath = encodeURI("/Rostliná stěna.stl");
 const rostlinnaBranaTopImagePath = encodeURI("/Rostliná brána-top.png");
@@ -57,7 +59,6 @@ export const ITEMS: Item[] = [
   {
     id: "1",
     name: "Rostlinná brána",
-    category: "Květináče",
     emoji: "🪴",
     description: "Rostlinná brána, která vytvoří velkou zastíněnou plochu.",
     coolingEffect: 6, 
@@ -72,7 +73,7 @@ export const ITEMS: Item[] = [
     modelPath: rostlinnaBranaModelPath,
     topDownImagePath: rostlinnaBranaTopImagePath,
     dimensionsM: rostlinnaBranaDimensions,
-    waterNeeded: true,
+    waterFrequency: "1x měsíčně (bez srážek)",
     tags: ["modulární", "brána", "venkovní"],
     specs: {
       "Barva": "Šedo-hnědá",
@@ -81,7 +82,6 @@ export const ITEMS: Item[] = [
     {
     id: "2",
     name: "Rostlinná stěna",
-    category: "Květináče",
     emoji: "🪴",
     description: "Rostlinná stěna, která vytvoří příjemné zastíněné prostředí.",
     coolingEffect: 6, 
@@ -96,15 +96,36 @@ export const ITEMS: Item[] = [
     modelPath: rostlinnaStenaModelPath,
     topDownImagePath: rostlinnaStenaTopImagePath,
     dimensionsM: rostlinnaStenaDimensions,
-    waterNeeded: true,
+    waterFrequency: "1x měsíčně (bez srážek)",
     tags: ["modulární", "stěna", "venkovní"],
     specs: {
       "Barva": "Šedo-hnědá",
     },
   },
+    {
+      id: "3",
+      name: "Zastíněné parkovací místo",
+      emoji: "🚗",
+      description: "Zastíněné parkovací místo, které poskytuje stín a komfort pro uživatele.",
+      coolingEffect: 4,
+      cost: "medium",
+      priceMin: 30000,
+      priceMax: 40000,
+      maintenance: "low",
+      lifespan: "10–15 let",
+      material: "Dřevo, hliník, nerezová ocel",
+      weight: "1 500 kg (s půdou a plně zavlažené)",
+      dimensions: "2 x 3 x 5 m",
+      modelPath: encodeURI("/Zastíněné parkovací místo.stl"),
+      topDownImagePath: encodeURI("/Zastíněné parkovací místo-top.png"),
+      dimensionsM: { width: 3, depth: 6 },
+      waterFrequency: "1x za 2 týdny (bez srážek)",
+      tags: ["modulární", "parkování", "venkovní"],
+      specs: {
+        "Barva": "Šedo-hnědá",
+      },
+    }
 ];
-
-export const CATEGORIES: Category[] = ["Květináče", "Nádoby", "Půdní pokryv", "Posezení"];
 
 export const COST_LABEL: Record<string, string> = { low: "Nízké", medium: "Střední", high: "Vysoké" };
 export const MAINT_LABEL: Record<string, string> = { low: "Nízká", medium: "Střední", high: "Vysoká" };

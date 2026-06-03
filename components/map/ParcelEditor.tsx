@@ -102,9 +102,9 @@ function getItemPriceRange(item: Item): { min: number; max: number } {
   return costToPrice(item.cost);
 }
 
-const ELEMENT_CATALOG = ITEMS.reduce<{ category: string; items: any[] }[]>((acc, item) => {
+const ELEMENT_CATALOG = ITEMS.map((item) => {
   const { w, h } = getItemCanvasDimensions(item);
-  const entry = {
+  return {
     type: item.id,
     label: item.name,
     icon: item.emoji,
@@ -115,11 +115,7 @@ const ELEMENT_CATALOG = ITEMS.reduce<{ category: string; items: any[] }[]>((acc,
     desc: item.dimensions,
     itemRef: item,
   };
-  const existing = acc.find(c => c.category === item.category);
-  if (existing) existing.items.push(entry);
-  else acc.push({ category: item.category, items: [entry] });
-  return acc;
-}, []);
+});
 
 const ELEMENT_PRICES: Record<string, { min: number; max: number }> = Object.fromEntries(
   ITEMS.map(item => [item.id, getItemPriceRange(item)])
@@ -256,10 +252,9 @@ function computePlanStats(elements: PlacedElement[], parcelAreaSqM: number, pixe
   const tempDelta = Math.max(-(totalCooling / Math.sqrt(parcelArea)), -3.0);
   const coveragePct = Math.min(100, (totalCoveredSqM / parcelArea) * 100);
 
-  const allItems = ELEMENT_CATALOG.flatMap(c => c.items);
   const breakdown = Object.entries(byType)
     .map(([type, data]) => {
-      const cat = allItems.find(i => i.type === type);
+      const cat = ELEMENT_CATALOG.find(i => i.type === type);
       return { label: cat?.label ?? type, icon: cat?.icon ?? "?", ...data };
     })
     .sort((a, b) => b.max - a.max);
@@ -404,7 +399,6 @@ function ItemTooltip({ item }: { item: Item }) {
         </div>
         <div>
           <div style={{ fontSize: 13, color: "#2e3a1f", fontStyle: "italic", marginBottom: 2 }}>{item.name}</div>
-          <div style={{ fontSize: 10, color: "#2e3a1f66", letterSpacing: "0.06em", textTransform: "uppercase" }}>{item.category}</div>
         </div>
       </div>
 
@@ -429,9 +423,9 @@ function ItemTooltip({ item }: { item: Item }) {
 
       <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 10 }}>
         <CostBadge cost={item.cost} />
-        {item.waterNeeded && (
+        {item.waterFrequency && (
           <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 3, background: "#5B7FA022", color: "#5B7FA0", fontFamily: "inherit", letterSpacing: "0.04em" }}>
-            💧 Potřebuje vodu
+            💧 {item.waterFrequency}
           </span>
         )}
         <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 3, background: "#2e3a1f0a", color: "#2e3a1f66", fontFamily: "inherit", letterSpacing: "0.04em" }}>
@@ -589,7 +583,7 @@ function PropertiesPanel({ item, selectedCount, onChange, onCommit, onDelete }: 
       {selectedCount > 1 ? "Vybráno více prvků" : "Vyberte prvek pro úpravu jeho vlastností"}
     </div>
   );
-  const catalogItem = ELEMENT_CATALOG.flatMap(c => c.items).find(i => i.type === item.type);
+  const catalogItem = ELEMENT_CATALOG.find(i => i.type === item.type);
   const price = ELEMENT_PRICES[item.type];
   const itemData: Item | undefined = (catalogItem as any)?.itemRef;
 
@@ -608,7 +602,7 @@ function PropertiesPanel({ item, selectedCount, onChange, onCommit, onDelete }: 
           <div style={{ marginTop: 8, fontSize: 11, color: "#2e3a1f66", lineHeight: 1.5 }}>
             <div>Chlazení: <span style={{ color: "#2a7d4f" }}>−{itemData.coolingEffect} °C</span></div>
             <div>Životnost: {itemData.lifespan}</div>
-            {itemData.waterNeeded && <div style={{ color: "#5B7FA0" }}>💧 Potřebuje zavlažování</div>}
+            {itemData.waterFrequency && <div style={{ color: "#5B7FA0" }}>💧 Zálivka: {itemData.waterFrequency}</div>}
           </div>
         )}
       </div>
@@ -748,7 +742,6 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
   const [selectionBox, setSelectionBox] = useState<{ startX: number; startY: number; x: number; y: number } | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [sidebarSearch, setSidebarSearch] = useState("");
-  const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [editorMapStyle, setEditorMapStyle] = useState<"map" | "satellite">("map");
   const [zoomDisplay, setZoomDisplay] = useState(100);
   const [barExpanded, setBarExpanded] = useState(false);
@@ -814,13 +807,12 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
   useEffect(() => { hoveredIdRef.current = hoveredId; }, [hoveredId]);
 
   useEffect(() => {
-    const allItems = ELEMENT_CATALOG.flatMap(c => c.items);
-    for (const cat of allItems) {
-      const imgPath: string | undefined = cat.itemRef?.topDownImagePath;
-      if (imgPath && !imageCacheRef.current.has(cat.type)) {
+    for (const catalogItem of ELEMENT_CATALOG) {
+      const imgPath: string | undefined = catalogItem.itemRef?.topDownImagePath;
+      if (imgPath && !imageCacheRef.current.has(catalogItem.type)) {
         const img = new Image();
         img.src = imgPath;
-        imageCacheRef.current.set(cat.type, img);
+        imageCacheRef.current.set(catalogItem.type, img);
       }
     }
   }, []);
@@ -1142,7 +1134,7 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
     ctx.fillText(barMetres >= 1000 ? `${barMetres / 1000}km` : `${barMetres}m`, bx + barPx / 2, by - 5 / zoom);
 
     elementsRef.current.forEach(el => {
-      const cat = ELEMENT_CATALOG.flatMap(c => c.items).find(i => i.type === el.type);
+      const cat = ELEMENT_CATALOG.find(i => i.type === el.type);
       if (!cat) return;
       const topDownImg = imageCacheRef.current.get(el.type);
       drawShape(
@@ -1885,23 +1877,11 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
 
 
   const selectedElement = selectedIds.length === 1 ? (elements.find(el => el.id === selectedIds[0]) ?? null) : null;
-  const categories = ELEMENT_CATALOG.map(c => c.category);
   const normalizedSidebarSearch = normalizeSearchText(sidebarSearch.trim());
-  const filteredCatalog = ELEMENT_CATALOG
-    .map((cat) => {
-      const normalizedCategory = normalizeSearchText(cat.category);
-      const items = cat.items.filter((item) => {
-        if (activeCategory && cat.category !== activeCategory) return false;
-        if (!normalizedSidebarSearch) return true;
-        const normalizedLabel = normalizeSearchText(item.label);
-        return (
-          normalizedLabel.includes(normalizedSidebarSearch) ||
-          normalizedCategory.includes(normalizedSidebarSearch)
-        );
-      });
-      return { ...cat, items };
-    })
-    .filter(cat => cat.items.length > 0);
+  const filteredCatalog = ELEMENT_CATALOG.filter((item) => {
+    if (!normalizedSidebarSearch) return true;
+    return normalizeSearchText(item.label).includes(normalizedSidebarSearch);
+  });
 
   const parcelAreaSqM = area.areaSqKm * 1_000_000;
   const planStats: PlanStats | null = elements.length === 0 ? null
@@ -2066,7 +2046,7 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
         {selectedIds.length > 0 && mobileSheet === "none" && (
           <div style={{ flexShrink: 0, borderTop: "1.5px solid #2e3a1f22", background: "#2e3a1f", display: "flex", alignItems: "center", height: 52, paddingLeft: 14 }}>
             <span style={{ fontSize: 12, color: "#F4F5E0cc", flex: 1, letterSpacing: "0.03em" }}>
-              {selectedIds.length === 1 ? (ELEMENT_CATALOG.flatMap(c => c.items).find(i => i.type === selectedElement?.type)?.label ?? "Prvek") : `Vybráno: ${selectedIds.length}`}
+              {selectedIds.length === 1 ? (ELEMENT_CATALOG.find(i => i.type === selectedElement?.type)?.label ?? "Prvek") : `Vybráno: ${selectedIds.length}`}
             </span>
             <button onClick={() => rotateSelectedBy(-15)} style={{ ...iconBtn, color: "#F4F5E0" }}><RotateCcw size={18} /></button>
             <button onClick={() => rotateSelectedBy(15)} style={{ ...iconBtn, color: "#F4F5E0" }}><RotateCw size={18} /></button>
@@ -2108,40 +2088,23 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
                 style={{ flex: 1, padding: "10px 12px", border: "1.5px solid #2e3a1f22", borderRadius: 8, background: "#2e3a1f08", fontSize: 14, fontFamily: "inherit", color: "#2e3a1f", outline: "none" }} />
               <button onClick={closeSheet} style={iconBtn}><X size={20} /></button>
             </div>
-            <div style={{ display: "flex", gap: 6, padding: "0 14px 10px", overflowX: "auto", flexShrink: 0 }}>
-              <button onClick={() => setActiveCategory(null)}
-                style={{ flexShrink: 0, fontSize: 11, letterSpacing: "0.04em", padding: "6px 12px", borderRadius: 999, border: "1.5px solid", cursor: "pointer", fontFamily: "inherit", borderColor: activeCategory === null ? "#2e3a1f" : "#2e3a1f33", background: activeCategory === null ? "#2e3a1f" : "transparent", color: activeCategory === null ? "#F4F5E0" : "#2e3a1f88" }}>
-                Vše
-              </button>
-              {categories.map(cat => (
-                <button key={cat} onClick={() => setActiveCategory(activeCategory === cat ? null : cat)}
-                  style={{ flexShrink: 0, fontSize: 11, letterSpacing: "0.04em", padding: "6px 12px", borderRadius: 999, border: "1.5px solid", cursor: "pointer", fontFamily: "inherit", whiteSpace: "nowrap", borderColor: activeCategory === cat ? "#2e3a1f" : "#2e3a1f33", background: activeCategory === cat ? "#2e3a1f" : "transparent", color: activeCategory === cat ? "#F4F5E0" : "#2e3a1f88" }}>
-                  {cat}
-                </button>
-              ))}
-            </div>
             <div style={{ flex: 1, overflowY: "auto", padding: "0 14px 20px", WebkitOverflowScrolling: "touch" }}>
-              {filteredCatalog.map(cat => (
-                <div key={cat.category} style={{ marginBottom: 18 }}>
-                  <div style={{ fontSize: 10, letterSpacing: "0.12em", textTransform: "uppercase", color: "#2e3a1f55", marginBottom: 8 }}>{cat.category}</div>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
-                    {cat.items.map(item => {
-                      const p = ELEMENT_PRICES[item.type];
-                      const priceLabel = p ? `${p.min >= 1000 ? `${(p.min / 1000).toFixed(p.min % 1000 === 0 ? 0 : 1)}k` : p.min}–${p.max >= 1000 ? `${(p.max / 1000).toFixed(p.max % 1000 === 0 ? 0 : 1)}k` : p.max}` : null;
-                      return (
-                        <button key={item.type} onClick={() => placeCatalogItem(item)}
-                          style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, padding: "12px 4px", border: "1.5px solid #2e3a1f18", borderRadius: 10, background: "#2e3a1f05", cursor: "pointer", fontFamily: "inherit" }}>
-                          <div style={{ width: 40, height: 40, borderRadius: 8, background: item.color + "33", border: `1.5px solid ${item.color}66`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>
-                            {item.icon}
-                          </div>
-                          <span style={{ fontSize: 9.5, letterSpacing: "0.03em", color: "#2e3a1f99", textAlign: "center", lineHeight: 1.2 }}>{item.label}</span>
-                          {priceLabel && <span style={{ fontSize: 8.5, color: "#2e3a1f55" }}>{priceLabel} Kč</span>}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+                {filteredCatalog.map(item => {
+                  const p = ELEMENT_PRICES[item.type];
+                  const priceLabel = p ? `${p.min >= 1000 ? `${(p.min / 1000).toFixed(p.min % 1000 === 0 ? 0 : 1)}k` : p.min}–${p.max >= 1000 ? `${(p.max / 1000).toFixed(p.max % 1000 === 0 ? 0 : 1)}k` : p.max}` : null;
+                  return (
+                    <button key={item.type} onClick={() => placeCatalogItem(item)}
+                      style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, padding: "12px 4px", border: "1.5px solid #2e3a1f18", borderRadius: 10, background: "#2e3a1f05", cursor: "pointer", fontFamily: "inherit" }}>
+                      <div style={{ width: 40, height: 40, borderRadius: 8, background: item.color + "33", border: `1.5px solid ${item.color}66`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>
+                        {item.icon}
+                      </div>
+                      <span style={{ fontSize: 9.5, letterSpacing: "0.03em", color: "#2e3a1f99", textAlign: "center", lineHeight: 1.2 }}>{item.label}</span>
+                      {priceLabel && <span style={{ fontSize: 8.5, color: "#2e3a1f55" }}>{priceLabel} Kč</span>}
+                    </button>
+                  );
+                })}
+              </div>
               {filteredCatalog.length === 0 && (
                 <div style={{ fontSize: 13, color: "#2e3a1f44", fontStyle: "italic", textAlign: "center", paddingTop: 30 }}>Nenalezeny žádné prvky</div>
               )}
@@ -2365,27 +2328,10 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
             <input value={sidebarSearch} onChange={e => setSidebarSearch(e.target.value)} placeholder="Hledat prvky…"
               style={{ width: "100%", padding: "7px 10px", border: "1.5px solid #2e3a1f22", borderRadius: 3, background: "#2e3a1f08", fontSize: 12, fontFamily: "inherit", color: "#2e3a1f", outline: "none", boxSizing: "border-box" }} />
           </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, padding: "8px 10px", borderBottom: "1.5px solid #2e3a1f11" }}>
-            <button onClick={() => setActiveCategory(null)}
-              style={{ fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase", padding: "3px 7px", borderRadius: 3, border: "1.5px solid", cursor: "pointer", fontFamily: "inherit", borderColor: activeCategory === null ? "#2e3a1f" : "#2e3a1f33", background: activeCategory === null ? "#2e3a1f" : "transparent", color: activeCategory === null ? "#F4F5E0" : "#2e3a1f77" }}>
-              Vše
-            </button>
-            {categories.map(cat => (
-              <button key={cat} onClick={() => setActiveCategory(activeCategory === cat ? null : cat)}
-                style={{ fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase", padding: "3px 7px", borderRadius: 3, border: "1.5px solid", cursor: "pointer", fontFamily: "inherit", borderColor: activeCategory === cat ? "#2e3a1f" : "#2e3a1f33", background: activeCategory === cat ? "#2e3a1f" : "transparent", color: activeCategory === cat ? "#F4F5E0" : "#2e3a1f77" }}>
-                {cat}
-              </button>
-            ))}
-          </div>
           <div style={{ flex: 1, overflowY: "auto", padding: "8px", overflowX: "visible" }}>
-            {filteredCatalog.map(cat => (
-              <div key={cat.category} style={{ marginBottom: 16 }}>
-                <div style={{ fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "#2e3a1f55", marginBottom: 6, padding: "0 4px" }}>{cat.category}</div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 2, position: "relative" }}>
-                  {cat.items.map(item => <CatalogItem key={item.type} item={item} onDragStart={onCatalogDragStart} />)}
-                </div>
-              </div>
-            ))}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 2, position: "relative" }}>
+              {filteredCatalog.map(item => <CatalogItem key={item.type} item={item} onDragStart={onCatalogDragStart} />)}
+            </div>
             {filteredCatalog.length === 0 && (
               <div style={{ fontSize: 12, color: "#2e3a1f44", fontStyle: "italic", textAlign: "center", paddingTop: 20 }}>Nenalezeny žádné prvky</div>
             )}
@@ -2468,7 +2414,7 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
                 Vrstvy ({elements.length})
               </div>
               {[...elements].reverse().map(el => {
-                const cat = ELEMENT_CATALOG.flatMap(c => c.items).find(i => i.type === el.type);
+                const cat = ELEMENT_CATALOG.find(i => i.type === el.type);
                 const isSel = selectedIds.includes(el.id);
                 return (
                   <div key={el.id}
