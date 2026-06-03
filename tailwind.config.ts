@@ -9,9 +9,9 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        bg: "#F4F5E0",
-        fg: "#E1F1B7",
-        btn: "#ACC18A",
+        bg: "#E8EACB",
+        fg: "#D2E5A0",
+        btn: "#96AD72",
         "btn-dark": "#8aa36e",
         text: {
           DEFAULT: "#2e3a1f",
@@ -24,6 +24,10 @@ const config: Config = {
         body: ["var(--font-pt-sans)", "sans-serif"],
       },
       keyframes: {
+        marquee: {
+          "0%": { transform: "translateX(0)" },
+          "100%": { transform: "translateX(-50%)" },
+        },
         drift: {
           "0%": { transform: "translate(0,0) scale(1)" },
           "100%": { transform: "translate(20px,16px) scale(1.04)" },
@@ -38,6 +42,7 @@ const config: Config = {
         },
       },
       animation: {
+        "marquee": "marquee 18s linear infinite",
         "drift-slow": "drift 10s ease-in-out infinite alternate",
         "drift-rev": "drift 14s ease-in-out infinite alternate-reverse",
         float: "float 5s ease-in-out infinite",

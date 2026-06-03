@@ -1,72 +1,117 @@
-import Image from "next/image";
-import Link from "next/link";
+"use client";
 
-const features = [
-  {
-    icon: "/leaf.svg",
-    title: "Rostlinná stěna",
-    desc: "Živá stěna tvořena břečťanem popínavým, která zlepšuje mikroklima a estetiku svého prostředí",
-    href: "/features?open=rostlinna-stena",
-  },
-  {
-    icon: "/planter.svg",
-    title: "Květináče s auto-zavlažováním",
-    desc: "Zavlažovací systém s využitím dešťové vody",
-  },
-  {
-    icon: "/accessories.svg",
-    title: "Příslušenství",
-    desc: "IoT Senzory, solární panely, vodní nádrže a další",
-  }
+import dynamic from "next/dynamic";
+import { useEffect, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
+
+const StlPreview = dynamic(() => import("./StlPreview"), { ssr: false });
+
+const MODELS = [
+  { name: "Rostlinná brána",           modelPath: encodeURI("/Rostliná brána.stl"), rotationPeriodMs: 8200 },
+  { name: "Rostlinná stěna",           modelPath: encodeURI("/Rostliná stěna.stl"), rotationPeriodMs: 7000 },
+  { name: "Zelená zastávka",           modelPath: "/Zelena_Zastavka.glb",           rotationPeriodMs: 7800 },
+  { name: "Zastíněné parkovací místo", modelPath: "/P.stl",                         rotationPeriodMs: 8000 },
 ];
 
+const ITEMS = [...MODELS, ...MODELS, ...MODELS];
+const N = MODELS.length;
+const CARD_W = 256; // w-64
+const GAP = 20;     // gap-5
+const STEP = CARD_W + GAP;
+const AUTO_MS = 3000;
+const TRANSITION_MS = 350;
+
 export default function Features() {
+  const [index, setIndex] = useState(N);
+  const [animated, setAnimated] = useState(true);
+  const indexRef = useRef(N);
+  const autoRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  useEffect(() => {
+    if (!animated) return;
+    const t = setTimeout(() => {
+      const cur = indexRef.current;
+      if (cur >= N * 2) { setAnimated(false); setIndex(cur - N); indexRef.current = cur - N; }
+      else if (cur < N) { setAnimated(false); setIndex(cur + N); indexRef.current = cur + N; }
+    }, TRANSITION_MS);
+    return () => clearTimeout(t);
+  }, [index, animated]);
+
+  const step = (dir: 1 | -1) => {
+    const next = indexRef.current + dir;
+    indexRef.current = next;
+    setAnimated(true);
+    setIndex(next);
+  };
+
+  const restartAuto = () => {
+    if (autoRef.current) clearInterval(autoRef.current);
+    autoRef.current = setInterval(() => step(1), AUTO_MS);
+  };
+
+  useEffect(() => {
+    restartAuto();
+    return () => { if (autoRef.current) clearInterval(autoRef.current); };
+  }, []);
+
+  const handlePrev = () => { step(-1); restartAuto(); };
+  const handleNext = () => { step(1); restartAuto(); };
+
   return (
-    <section id="features" className="py-20 snap-start">
-      <div className="max-w-5xl mx-auto px-6">
-        <div className="text-center mb-14">
-          <h2 className="font-display text-4xl md:text-5xl text-text mb-3">
-            Naše řešení
-          </h2>
-        </div>
+    <section id="features" className="py-20 snap-start overflow-hidden">
+      <div className="max-w-5xl mx-auto px-6 mb-12 text-center">
+        <h2 className="font-display text-4xl md:text-5xl text-text mb-3">
+          Naše řešení
+        </h2>
+      </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-          {features.map((f) => {
-            const content = (
-              <>
-                <Image
-                  src={f.icon}
-                  alt={`${f.title} ikona`}
-                  width={36}
-                  height={36}
-                  className="mb-4 block h-9 w-9"
-                />
-                <h3 className="font-display text-xl text-text mb-2">{f.title}</h3>
-                <p className="text-text-mid text-sm leading-relaxed">{f.desc}</p>
-              </>
-            );
+      <div className="relative w-[808px] mx-auto">
+        {/* Arrows */}
+        <button
+          onClick={handlePrev}
+          aria-label="Předchozí"
+          className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-[calc(100%+8px)] z-20 w-10 h-10  flex items-center justify-center text-text-mid hover:text-text transition-all"
+        >
+          <ChevronLeft size={20} />
+        </button>
+        <button
+          onClick={handleNext}
+          aria-label="Další"
+          className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-[calc(100%+8px)] z-20 w-10 h-10 flex items-center justify-center text-text-mid hover:text-text transition-all"
+        >
+          <ChevronRight size={20} />
+        </button>
 
-            if (f.href) {
-              return (
-                <Link
-                  key={f.title}
-                  href={f.href}
-                  className="h-full bg-fg border border-btn/35 rounded-2xl p-7 hover:-translate-y-1 hover:shadow-[0_16px_40px_rgba(46,58,31,0.12)] transition-all duration-300 block"
-                >
-                  {content}
-                </Link>
-              );
-            }
+        {/* Fade edges */}
+        <div className="pointer-events-none absolute inset-y-0 left-0 w-20 bg-gradient-to-r from-bg to-transparent z-10" />
+        <div className="pointer-events-none absolute inset-y-0 right-0 w-20 bg-gradient-to-l from-bg to-transparent z-10" />
 
-            return (
+        <div className="overflow-hidden">
+          <div
+            className="flex gap-5"
+            style={{
+              transform: `translateX(${-index * STEP}px)`,
+              transition: animated ? `transform ${TRANSITION_MS}ms ease` : "none",
+            }}
+          >
+            {ITEMS.map((model, i) => (
               <div
-                key={f.title}
-                className="h-full bg-fg border border-btn/35 rounded-2xl p-7 hover:-translate-y-1 hover:shadow-[0_16px_40px_rgba(46,58,31,0.12)] transition-all duration-300"
+                key={i}
+                className="w-64 shrink-0 bg-fg border border-btn/35 rounded-2xl p-4 flex flex-col items-center gap-3"
               >
-                {content}
+                <div className="w-full h-56">
+                  <StlPreview
+                    modelPath={model.modelPath}
+                    zoom={1}
+                    rotationPeriodMs={model.rotationPeriodMs}
+                  />
+                </div>
+                <p className="font-display text-sm text-text text-center leading-tight">
+                  {model.name}
+                </p>
               </div>
-            );
-          })}
+            ))}
+          </div>
         </div>
       </div>
     </section>
