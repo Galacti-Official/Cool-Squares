@@ -127,7 +127,8 @@ function buildSampleGrid(bounds: ClimateArea["bounds"], gridSize: number, expand
 }
 
 async function fetchClimateSamples(bounds: ClimateArea["bounds"], gridSize: number, expandRatio = 0.3): Promise<ClimateSample[]> {
-  const key = `${gridSize}:${expandRatio}:${bounds.north.toFixed(4)}:${bounds.south.toFixed(4)}:${bounds.east.toFixed(4)}:${bounds.west.toFixed(4)}`;
+  const today = new Date().toISOString().slice(0, 10);
+  const key = `${today}:${gridSize}:${expandRatio}:${bounds.north.toFixed(4)}:${bounds.south.toFixed(4)}:${bounds.east.toFixed(4)}:${bounds.west.toFixed(4)}`;
   const cached = climateCache.get(key);
   if (cached) return cached;
 
@@ -146,8 +147,10 @@ async function fetchClimateSamples(bounds: ClimateArea["bounds"], gridSize: numb
       const endpoint = new URL("https://api.open-meteo.com/v1/forecast");
       endpoint.searchParams.set("latitude", latCsv);
       endpoint.searchParams.set("longitude", lngCsv);
-      endpoint.searchParams.set("current", "temperature_2m");
-      endpoint.searchParams.set("timezone", "auto");
+      endpoint.searchParams.set("hourly", "temperature_2m");
+      endpoint.searchParams.set("start_date", today);
+      endpoint.searchParams.set("end_date", today);
+      endpoint.searchParams.set("timezone", "Europe/Prague");
 
       const json = await fetchWithRetry(endpoint.toString(), 4);
       const parsed = parseBatchResponse(json, chunk);
@@ -195,6 +198,18 @@ function parseBatchResponse(json: any, fallbackPoints: [number, number][]): Clim
   rows.forEach((row: any) => {
     const rowElev = typeof row?.elevation === "number" ? row.elevation : 0;
 
+    if (row?.hourly?.time && Array.isArray(row.hourly.temperature_2m)) {
+      const times: string[] = row.hourly.time;
+      const temps2m: number[] = row.hourly.temperature_2m;
+      const noonIdx = times.findIndex((t: string) => t.endsWith("T12:00"));
+      const idx = noonIdx >= 0 ? noonIdx : Math.min(12, temps2m.length - 1);
+      if (typeof temps2m[idx] === "number") {
+        temps.push(temps2m[idx]);
+        elevations.push(rowElev);
+        if (!time && times[idx]) time = times[idx];
+      }
+      return;
+    }
     if (Array.isArray(row?.current)) {
       const before = temps.length;
       row.current.forEach((entry: any) => {
@@ -380,6 +395,37 @@ function buildContinuousOverlay(
     [[bounds.south, bounds.west], [bounds.north, bounds.east]],
     { opacity: 0.95, interactive: false }
   );
+}
+
+export async function addClimateLayersToMap(
+  L: any,
+  map: any,
+  pane = "overlayPane",
+): Promise<any[]> {
+  const layers: any[] = [];
+
+  const samples = await fetchClimateSamples(CZECH_BOUNDS, CZECH_GRID_SIZE, 0);
+  const temps = samples.map(s => s.temperature);
+  const min = Math.min(...temps);
+  const max = Math.max(...temps);
+
+  const smoothOverlay = buildContinuousOverlay(L, samples, CZECH_BOUNDS, CZECH_GRID_SIZE, min, max);
+  if (smoothOverlay) {
+    smoothOverlay.options.pane = pane;
+    smoothOverlay.addTo(map);
+    layers.push(smoothOverlay);
+  }
+
+  for (const city of CITY_THERMAL_OVERLAYS) {
+    const { north, south, east, west } = city.bounds;
+    const imgUrl = buildArcGISExportUrl(city.serviceUrl, city.bounds);
+    const cityLayer = L.imageOverlay(imgUrl, [[south, west], [north, east]], {
+      opacity: 0.85, interactive: false, pane,
+    }).addTo(map);
+    layers.push(cityLayer);
+  }
+
+  return layers;
 }
 
 export default function ClimateMap({

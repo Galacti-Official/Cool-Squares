@@ -5,12 +5,14 @@ import * as THREE from "three";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { DRACOLoader } from "three/examples/jsm/loaders/DRACOLoader.js";
+import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 
 type StlPreviewProps = {
   modelPath: string;
   zoom?: number;
   className?: string;
   rotationPeriodMs?: number;
+  interactive?: boolean;
 };
 
 const dracoLoader = new DRACOLoader();
@@ -21,6 +23,7 @@ export default function StlPreview({
   zoom = 1,
   className = "h-full w-full",
   rotationPeriodMs = 17500,
+  interactive = false,
 }: StlPreviewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
 
@@ -53,6 +56,17 @@ export default function StlPreview({
     let mesh: THREE.Mesh | null = null;
     const rotationSpeedRadPerSec = (Math.PI * 2) / (rotationPeriodMs / 1000);
 
+    let controls: OrbitControls | null = null;
+    if (interactive) {
+      controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.08;
+      controls.rotateSpeed = 0.8;
+      controls.zoomSpeed = 1.2;
+      controls.minDistance = 1;
+      controls.maxDistance = 30;
+    }
+
     const fitCameraToMesh = () => {
       if (!mesh) return;
       const box = new THREE.Box3().setFromObject(mesh);
@@ -70,6 +84,11 @@ export default function StlPreview({
       camera.far = Math.max(100, distance * 100);
       camera.lookAt(center);
       camera.updateProjectionMatrix();
+
+      if (controls) {
+        controls.target.copy(center);
+        controls.update();
+      }
     };
 
     const setupMesh = (geometry: THREE.BufferGeometry) => {
@@ -127,7 +146,9 @@ export default function StlPreview({
       const deltaSec = (timestamp - lastFrameTs) / 1000;
       lastFrameTs = timestamp;
 
-      if (mesh) {
+      if (controls) {
+        controls.update();
+      } else if (mesh) {
         mesh.rotation.z += rotationSpeedRadPerSec * deltaSec;
       }
 
@@ -141,6 +162,7 @@ export default function StlPreview({
       window.removeEventListener("resize", resize);
       window.cancelAnimationFrame(frameId);
 
+      if (controls) controls.dispose();
       if (mesh) {
         mesh.geometry.dispose();
       }
@@ -151,7 +173,7 @@ export default function StlPreview({
         container.removeChild(renderer.domElement);
       }
     };
-  }, [modelPath, zoom, rotationPeriodMs]);
+  }, [modelPath, zoom, rotationPeriodMs, interactive]);
 
   return (
     <div

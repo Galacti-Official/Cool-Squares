@@ -2,8 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { ITEMS, CATEGORIES, type Item, type Category } from "./itemData";
-import { Search } from 'lucide-react';
+import dynamic from "next/dynamic";
+import { ITEMS, type Item } from "./itemData";
+import { Search, ChevronDown, X, RotateCcw, AlertTriangle } from 'lucide-react';
+
+const StlPreview = dynamic(() => import("../StlPreview"), { ssr: false });
 
 const COST_COLOR: Record<string, string> = {
   low: "bg-emerald-100 text-emerald-700",
@@ -45,8 +48,8 @@ function getMaintenanceSearchAliases(maintenance: Item["maintenance"]): string[]
   return ["vysoka", "vysoke", "narocna", "high", "demanding"];
 }
 
-function getWaterSearchAliases(waterNeeded: boolean): string[] {
-  if (waterNeeded) return ["voda", "zavlaha", "zalivka", "water", "watering"];
+function getWaterSearchAliases(waterFrequency?: string): string[] {
+  if (waterFrequency) return ["voda", "zavlaha", "zalivka", "water", "watering"];
   return ["bez-vody", "bezvody", "bez vody", "sucho", "dry", "no-water"];
 }
 
@@ -54,7 +57,6 @@ interface ItemSearchIndex {
   item: Item;
   name: string;
   description: string;
-  category: string;
   material: string;
   dimensions: string;
   weight: string;
@@ -68,7 +70,6 @@ function buildSearchIndex(item: Item): ItemSearchIndex {
     item,
     name: normalizeSearchText(item.name),
     description: normalizeSearchText(item.description),
-    category: normalizeSearchText(item.category),
     material: normalizeSearchText(item.material),
     dimensions: normalizeSearchText(item.dimensions),
     weight: normalizeSearchText(item.weight),
@@ -77,7 +78,7 @@ function buildSearchIndex(item: Item): ItemSearchIndex {
     aliases: [
       ...getCostSearchAliases(item.cost),
       ...getMaintenanceSearchAliases(item.maintenance),
-      ...getWaterSearchAliases(item.waterNeeded),
+      ...getWaterSearchAliases(item.waterFrequency),
       normalizeSearchText(COST_LABEL[item.cost]),
       normalizeSearchText(MAINT_LABEL[item.maintenance]),
     ],
@@ -96,10 +97,6 @@ function scoreSearchMatch(index: ItemSearchIndex, query: string, terms: string[]
     }
     if (index.tags.some((tag) => tag.includes(term))) {
       score += 30;
-      matched = true;
-    }
-    if (index.category.includes(term)) {
-      score += 24;
       matched = true;
     }
     if (index.material.includes(term)) {
@@ -131,7 +128,6 @@ function scoreSearchMatch(index: ItemSearchIndex, query: string, terms: string[]
   else if (index.name.includes(query)) score += 58;
 
   if (index.tags.some((tag) => tag.includes(query))) score += 40;
-  if (index.category.includes(query)) score += 34;
   if (index.aliases.some((alias) => alias.includes(query))) score += 28;
   if (index.description.includes(query)) score += 20;
 
@@ -150,6 +146,65 @@ function getSortComparator(sortBy: "name" | "cooling" | "cost"): (a: Item, b: It
 }
 
 const ITEM_SEARCH_INDEX = ITEMS.map(buildSearchIndex);
+
+const SORT_OPTIONS = [
+  { value: "name", label: "Řazení: A–Z" },
+  { value: "cooling", label: "Nejlepší ochlazení" },
+  { value: "cost", label: "Nejnižší cena" },
+] as const;
+
+function SortDropdown({
+  value,
+  onChange,
+}: {
+  value: "name" | "cooling" | "cost";
+  onChange: (v: "name" | "cooling" | "cost") => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const selected = SORT_OPTIONS.find((o) => o.value === value)!;
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-2 bg-bg border border-btn/40 rounded-full px-4 py-2.5 text-sm text-text hover:border-btn hover:shadow-sm transition-all focus:outline-none focus:border-btn focus:ring-2 focus:ring-btn/20 whitespace-nowrap"
+      >
+        {selected.label}
+        <ChevronDown
+          size={14}
+          className={`text-text-light transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+        />
+      </button>
+
+      {open && (
+        <div className="absolute right-0 mt-2 w-52 bg-bg border border-btn/30 rounded-2xl shadow-lg overflow-hidden z-20">
+          {SORT_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => { onChange(opt.value); setOpen(false); }}
+              className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${
+                opt.value === value
+                  ? "bg-text text-bg font-medium"
+                  : "text-text hover:bg-btn/15"
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function formatCZK(value: number): string {
   return `${value.toLocaleString("cs-CZ")} Kč`;
@@ -198,7 +253,6 @@ function ItemCard({ item, onClick }: { item: Item; onClick: () => void }) {
           <h3 className="font-display text-lg text-text leading-tight group-hover:text-btn-dark transition-colors">
             {item.name}
           </h3>
-          <p className="text-xs text-text-light mt-0.5">{item.category}</p>
         </div>
       </div>
 
@@ -215,8 +269,14 @@ function ItemCard({ item, onClick }: { item: Item; onClick: () => void }) {
         <span className={`${BADGE} bg-fg text-text-mid`}>
           Údržba: {MAINT_LABEL[item.maintenance]}
         </span>
-        {!item.waterNeeded && (
-          <span className={`${BADGE} bg-fg text-text-mid`}>Bez potřeby vody</span>
+        <span className={`${BADGE} bg-fg text-text-mid`}>
+          Zálivka: {item.waterFrequency ?? "Bez potřeby"}
+        </span>
+        {item.tags.includes("nemodulární") && (
+          <span className={`${BADGE} bg-red-100 text-red-700 font-bold flex items-center gap-1`}>
+            <AlertTriangle size={11} />
+            NEMODULÁRNÍ
+          </span>
         )}
       </div>
     </button>
@@ -225,6 +285,7 @@ function ItemCard({ item, onClick }: { item: Item; onClick: () => void }) {
 
 function DetailPanel({ item, onClose }: { item: Item; onClose: () => void }) {
   const priceLabel = getItemPriceLabel(item);
+  const isNonModular = item.tags.includes("nemodulární");
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 sm:p-8">
@@ -238,17 +299,49 @@ function DetailPanel({ item, onClose }: { item: Item; onClose: () => void }) {
           <span className="text-4xl">{item.emoji}</span>
           <div className="flex-1 min-w-0">
             <h2 className="font-display text-2xl text-text leading-tight">{item.name}</h2>
-            <p className="text-sm text-text-light">{item.category}</p>
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-fg border border-btn/30 flex items-center justify-center text-text-mid hover:bg-btn/30 transition-colors text-sm"
+            className="w-8 h-8 rounded-full flex items-center justify-center text-text-mid hover:text-text transition-colors"
           >
-            ✕
+            <X size={20} />
           </button>
         </div>
 
         <div className="p-6 space-y-6">
+
+          {isNonModular && (
+            <div className="flex items-start gap-3 bg-red-50 border-2 border-red-400 rounded-2xl px-5 py-4">
+              <AlertTriangle size={22} className="text-red-600 mt-0.5 shrink-0" />
+              <div>
+                <p className="text-red-700 font-bold text-base leading-snug">NENÍ MODULÁRNÍ</p>
+                <p className="text-red-600 text-sm mt-0.5">
+                  Tento prvek nelze přemísťovat — nutné zabetonování základů do země.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {item.modelPath && (
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <p className="text-xs uppercase tracking-widest text-text-light">3D model</p>
+                <div className="flex items-center gap-1 text-xs text-text-light">
+                  <RotateCcw size={11} />
+                  <span>táhněte pro otáčení · kolečko pro zoom</span>
+                </div>
+              </div>
+              <div className="h-64 rounded-2xl overflow-hidden bg-fg border border-btn/20">
+                <StlPreview
+                  modelPath={item.modelPath}
+                  zoom={1.1}
+                  interactive={true}
+                  className="h-full w-full"
+                />
+              </div>
+            </div>
+          )}
+
           <p className="text-text-mid leading-relaxed">{item.description}</p>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -275,7 +368,7 @@ function DetailPanel({ item, onClose }: { item: Item; onClose: () => void }) {
               { label: "Materiál", value: item.material },
               { label: "Hmotnost", value: item.weight },
               { label: "Rozměry", value: item.dimensions },
-              { label: "Potřeba vody", value: item.waterNeeded ? "Ano" : "Ne" },
+              { label: "Zálivka", value: item.waterFrequency ?? "Bez potřeby" },
             ].map(({ label, value }) => (
               <div key={label} className="flex justify-between items-start py-2.5 px-3 rounded-xl bg-fg/60 border border-btn/15">
                 <span className="text-xs text-text-light">{label}</span>
@@ -317,7 +410,6 @@ function DetailPanel({ item, onClose }: { item: Item; onClose: () => void }) {
 export default function EncyclopediaView() {
   const searchParams = useSearchParams();
   const [search, setSearch] = useState("");
-  const [activeCategory, setActiveCategory] = useState<Category | "Vše">("Vše");
   const [sortBy, setSortBy] = useState<"name" | "cooling" | "cost">("name");
   const [selected, setSelected] = useState<Item | null>(null);
   const initialOpenApplied = useRef(false);
@@ -342,11 +434,7 @@ export default function EncyclopediaView() {
 
   const filtered = useMemo(() => {
     const comparator = getSortComparator(sortBy);
-    let items = ITEM_SEARCH_INDEX;
-
-    if (activeCategory !== "Vše") {
-      items = items.filter((entry) => entry.item.category === activeCategory);
-    }
+    const items = ITEM_SEARCH_INDEX;
 
     const query = normalizeSearchText(search.trim());
     const terms = splitSearchTerms(query);
@@ -363,7 +451,7 @@ export default function EncyclopediaView() {
       .filter((entry) => entry.score >= 0)
       .sort((a, b) => b.score - a.score || comparator(a.item, b.item))
       .map((entry) => entry.item);
-  }, [search, activeCategory, sortBy]);
+  }, [search, sortBy]);
 
   return (
     <div className="min-h-screen bg-fg/40">
@@ -375,7 +463,7 @@ export default function EncyclopediaView() {
             Prvky pro ochlazení města
           </h1>
           <p className="text-text-mid max-w-lg">
-            Všechny květináče, nádoby, povrchy a prvky pro zásahy do městských náměstí s kompletními specifikacemi a daty o ochlazení.
+            Přehled všech prvků pro zásahy do městských náměstí s kompletními specifikacemi a daty o ochlazení.
           </p>
         </div>
       </div>
@@ -396,34 +484,7 @@ export default function EncyclopediaView() {
             />
           </div>
 
-          <select
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-            className="bg-bg border border-btn/40 rounded-full px-4 py-2.5 text-sm text-text focus:outline-none focus:border-btn cursor-pointer"
-          >
-            <option value="name">Řazení: A–Z</option>
-            <option value="cooling">Řazení: Nejlepší ochlazení</option>
-            <option value="cost">Řazení: Nejnižší cena</option>
-          </select>
-        </div>
-
-        <div className="flex flex-wrap gap-2 mb-8">
-          {(["Vše", ...CATEGORIES] as const).map((cat) => (
-            <button
-              key={cat}
-              onClick={() => setActiveCategory(cat)}
-              className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${
-                activeCategory === cat
-                  ? "bg-text text-bg shadow-sm"
-                  : "bg-bg border border-btn/40 text-text-mid hover:border-btn hover:text-text"
-              }`}
-            >
-              {cat}
-              <span className="ml-1.5 text-xs opacity-60">
-                {cat === "Vše" ? ITEMS.length : ITEMS.filter((i) => i.category === cat).length}
-              </span>
-            </button>
-          ))}
+          <SortDropdown value={sortBy} onChange={setSortBy} />
         </div>
 
         {filtered.length === 0 ? (

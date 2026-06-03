@@ -39,7 +39,7 @@ export default function Hero() {
   }, []);
 
   return (
-    <section className="relative py-16 md:py-28 overflow-hidden snap-start">
+    <section className="relative py-16 md:py-20 overflow-hidden snap-start">
       <div className="relative z-10 max-w-6xl mx-auto px-6 flex flex-col lg:flex-row items-center justify-between gap-10">
         <div className="max-w-xl text-center lg:text-left">
           <h1 className="font-display text-4xl sm:text-5xl md:text-[4.2rem] leading-[1.1] text-text mb-5">

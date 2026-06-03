@@ -6,7 +6,7 @@ import dynamic from "next/dynamic";
 import { ITEMS, type Item } from "../encyclopedia/itemData";
 import { formatAreaByMagnitude } from "./areaFormat";
 import ClimateMap from "./ClimateMap";
-import { ArrowLeft, ChevronDown, Monitor, Redo2, RotateCcw, RotateCw, Undo2 } from "lucide-react";
+import { ArrowLeft, ChevronDown, Maximize2, MoreVertical, Plus, Redo2, RotateCcw, RotateCw, Trash2, Undo2, X } from "lucide-react";
 
 const StlPreview = dynamic(() => import("../StlPreview"), { ssr: false });
 
@@ -102,9 +102,9 @@ function getItemPriceRange(item: Item): { min: number; max: number } {
   return costToPrice(item.cost);
 }
 
-const ELEMENT_CATALOG = ITEMS.reduce<{ category: string; items: any[] }[]>((acc, item) => {
+const ELEMENT_CATALOG = ITEMS.map((item) => {
   const { w, h } = getItemCanvasDimensions(item);
-  const entry = {
+  return {
     type: item.id,
     label: item.name,
     icon: item.emoji,
@@ -115,11 +115,7 @@ const ELEMENT_CATALOG = ITEMS.reduce<{ category: string; items: any[] }[]>((acc,
     desc: item.dimensions,
     itemRef: item,
   };
-  const existing = acc.find(c => c.category === item.category);
-  if (existing) existing.items.push(entry);
-  else acc.push({ category: item.category, items: [entry] });
-  return acc;
-}, []);
+});
 
 const ELEMENT_PRICES: Record<string, { min: number; max: number }> = Object.fromEntries(
   ITEMS.map(item => [item.id, getItemPriceRange(item)])
@@ -256,10 +252,9 @@ function computePlanStats(elements: PlacedElement[], parcelAreaSqM: number, pixe
   const tempDelta = Math.max(-(totalCooling / Math.sqrt(parcelArea)), -3.0);
   const coveragePct = Math.min(100, (totalCoveredSqM / parcelArea) * 100);
 
-  const allItems = ELEMENT_CATALOG.flatMap(c => c.items);
   const breakdown = Object.entries(byType)
     .map(([type, data]) => {
-      const cat = allItems.find(i => i.type === type);
+      const cat = ELEMENT_CATALOG.find(i => i.type === type);
       return { label: cat?.label ?? type, icon: cat?.icon ?? "?", ...data };
     })
     .sort((a, b) => b.max - a.max);
@@ -404,7 +399,6 @@ function ItemTooltip({ item }: { item: Item }) {
         </div>
         <div>
           <div style={{ fontSize: 13, color: "#2e3a1f", fontStyle: "italic", marginBottom: 2 }}>{item.name}</div>
-          <div style={{ fontSize: 10, color: "#2e3a1f66", letterSpacing: "0.06em", textTransform: "uppercase" }}>{item.category}</div>
         </div>
       </div>
 
@@ -429,9 +423,9 @@ function ItemTooltip({ item }: { item: Item }) {
 
       <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginBottom: 10 }}>
         <CostBadge cost={item.cost} />
-        {item.waterNeeded && (
+        {item.waterFrequency && (
           <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 3, background: "#5B7FA022", color: "#5B7FA0", fontFamily: "inherit", letterSpacing: "0.04em" }}>
-            💧 Potřebuje vodu
+            💧 {item.waterFrequency}
           </span>
         )}
         <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 3, background: "#2e3a1f0a", color: "#2e3a1f66", fontFamily: "inherit", letterSpacing: "0.04em" }}>
@@ -589,7 +583,7 @@ function PropertiesPanel({ item, selectedCount, onChange, onCommit, onDelete }: 
       {selectedCount > 1 ? "Vybráno více prvků" : "Vyberte prvek pro úpravu jeho vlastností"}
     </div>
   );
-  const catalogItem = ELEMENT_CATALOG.flatMap(c => c.items).find(i => i.type === item.type);
+  const catalogItem = ELEMENT_CATALOG.find(i => i.type === item.type);
   const price = ELEMENT_PRICES[item.type];
   const itemData: Item | undefined = (catalogItem as any)?.itemRef;
 
@@ -608,18 +602,18 @@ function PropertiesPanel({ item, selectedCount, onChange, onCommit, onDelete }: 
           <div style={{ marginTop: 8, fontSize: 11, color: "#2e3a1f66", lineHeight: 1.5 }}>
             <div>Chlazení: <span style={{ color: "#2a7d4f" }}>−{itemData.coolingEffect} °C</span></div>
             <div>Životnost: {itemData.lifespan}</div>
-            {itemData.waterNeeded && <div style={{ color: "#5B7FA0" }}>💧 Potřebuje zavlažování</div>}
+            {itemData.waterFrequency && <div style={{ color: "#5B7FA0" }}>💧 Zálivka: {itemData.waterFrequency}</div>}
           </div>
         )}
       </div>
       <div style={{ marginBottom: 10 }}>
         <div style={{ fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "#2e3a1f77", marginBottom: 4 }}>Rotace (°)</div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <input type="range" min={0} max={360} value={item.rotation || 0}
+          <input type="range" min={0} max={360} value={Math.round(item.rotation || 0)}
             onChange={e => onChange({ ...item, rotation: Number(e.target.value) })}
             onMouseUp={e => onCommit({ ...item, rotation: Number((e.target as HTMLInputElement).value) })}
             style={{ flex: 1, accentColor: "#2e3a1f" }} />
-          <span style={{ fontSize: 11, color: "#2e3a1f", width: 32, textAlign: "right" }}>{item.rotation || 0}°</span>
+          <span style={{ fontSize: 11, color: "#2e3a1f", width: 32, textAlign: "right" }}>{Math.round(item.rotation || 0)}°</span>
         </div>
       </div>
       <div style={{ marginBottom: 10 }}>
@@ -666,7 +660,7 @@ function PlanSummaryBar({ stats, expanded, onToggle, area }: {
         </div>
         <div style={{ width: 1, height: 20, background: "#2e3a1f22", margin: "0 20px" }} />
         <div style={{ display: "flex", alignItems: "baseline", gap: 6, minWidth: 160 }}>
-          <span style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "#2e3a1f77" }}>Ochlazení</span>
+          <span style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "#2e3a1f77" }}>Přibližné Ochlazení</span>
           <span style={{ fontSize: 14, color: tempColor, fontStyle: "italic" }}>{hasElements ? tempLabel : "—"}</span>
         </div>
         <div style={{ width: 1, height: 20, background: "#2e3a1f22", margin: "0 20px" }} />
@@ -748,18 +742,18 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
   const [selectionBox, setSelectionBox] = useState<{ startX: number; startY: number; x: number; y: number } | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const [sidebarSearch, setSidebarSearch] = useState("");
-  const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const [editorMapStyle, setEditorMapStyle] = useState<"map" | "satellite">("map");
   const [zoomDisplay, setZoomDisplay] = useState(100);
   const [barExpanded, setBarExpanded] = useState(false);
   const [satTilesVersion, setSatTilesVersion] = useState(0);
   const [satImageStatus, setSatImageStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
-  const [tooSmall, setTooSmall] = useState(
-    () => typeof window !== "undefined" && window.innerWidth < 960
+  const [isMobile, setIsMobile] = useState(
+    () => typeof window !== "undefined" && window.innerWidth < 768
   );
+  const [mobileSheet, setMobileSheet] = useState<"none" | "catalog" | "summary" | "inspector" | "menu">("none");
 
   useEffect(() => {
-    const check = () => setTooSmall(window.innerWidth < 960);
+    const check = () => setIsMobile(window.innerWidth < 768);
     window.addEventListener("resize", check);
     return () => window.removeEventListener("resize", check);
   }, []);
@@ -785,6 +779,16 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
   const marqueeState = useRef<{ startX: number; startY: number; additive: boolean } | null>(null);
   const spaceDown = useRef(false);
 
+  // Touch / mobile gesture state
+  const pinchRef = useRef<{
+    startDist: number;
+    startZoom: number;
+    startWorld: [number, number];
+  } | null>(null);
+  const touchTapRef = useRef<{ x: number; y: number; moved: boolean } | null>(null);
+  const touchActiveRef = useRef(false);
+  const touchClearTimeout = useRef<number | null>(null);
+
   const historyRef = useRef<PlacedElement[][]>([[]]);
   const historyIndexRef = useRef(0);
   const pendingInteractiveRef = useRef<PlacedElement[] | null>(null);
@@ -803,13 +807,12 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
   useEffect(() => { hoveredIdRef.current = hoveredId; }, [hoveredId]);
 
   useEffect(() => {
-    const allItems = ELEMENT_CATALOG.flatMap(c => c.items);
-    for (const cat of allItems) {
-      const imgPath: string | undefined = cat.itemRef?.topDownImagePath;
-      if (imgPath && !imageCacheRef.current.has(cat.type)) {
+    for (const catalogItem of ELEMENT_CATALOG) {
+      const imgPath: string | undefined = catalogItem.itemRef?.topDownImagePath;
+      if (imgPath && !imageCacheRef.current.has(catalogItem.type)) {
         const img = new Image();
         img.src = imgPath;
-        imageCacheRef.current.set(cat.type, img);
+        imageCacheRef.current.set(catalogItem.type, img);
       }
     }
   }, []);
@@ -864,11 +867,11 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
     setSatTilesVersion(v => v + 1);
 
     const { north, south, east, west } = area.bounds;
-    let zoom = 18;
-    for (let z = 18; z >= 12; z--) {
+    let zoom = 19;
+    for (let z = 19; z >= 12; z--) {
       const count = (Math.abs(lngToTileX(east, z) - lngToTileX(west, z)) + 1)
                   * (Math.abs(latToTileY(south, z) - latToTileY(north, z)) + 1);
-      if (count <= 36) { zoom = z; break; }
+      if (count <= 64) { zoom = z; break; }
     }
     const x0 = Math.min(lngToTileX(west, zoom), lngToTileX(east, zoom));
     const x1 = Math.max(lngToTileX(west, zoom), lngToTileX(east, zoom));
@@ -956,7 +959,13 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
     const labelColor    = isSat ? "#f1f6e0bb" : "#2e3a1f55";
     const scaleColor    = isSat ? "#f1f6e0d0" : "#2e3a1f88";
 
-    ctx.clearRect(0, 0, w, h);
+    // Backing store may be larger than the CSS box for crisp output on
+    // high-DPI screens. Work in CSS pixels by scaling the base transform.
+    const renderScale = w > 0 ? ctx.canvas.width / w : 1;
+    ctx.imageSmoothingQuality = "high";
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    ctx.setTransform(renderScale, 0, 0, renderScale, 0, 0);
     ctx.fillStyle = bgFill;
     ctx.fillRect(0, 0, w, h);
 
@@ -980,7 +989,11 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
 
     ctx.save();
     const cos = Math.cos(angle), sin = Math.sin(angle);
-    ctx.setTransform(zoom * cos, zoom * sin, -zoom * sin, zoom * cos, vpX, vpY);
+    ctx.setTransform(
+      zoom * cos * renderScale, zoom * sin * renderScale,
+      -zoom * sin * renderScale, zoom * cos * renderScale,
+      vpX * renderScale, vpY * renderScale
+    );
 
     const { project, pixelsPerMetre } = makeProjection(area.points, w, h, 80);
     pixelsPerMetreRef.current = pixelsPerMetre;
@@ -1009,7 +1022,7 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
       worldPts.forEach(([px, py]) => ctx.lineTo(px, py));
       ctx.closePath();
       ctx.clip();
-      ctx.globalAlpha = 0.95;
+      ctx.globalAlpha = 1;
       satelliteTilesRef.current.forEach(tile => {
         const nw = project([tileYToLat(tile.y, tile.z), tileXToLng(tile.x, tile.z)]);
         const se = project([tileYToLat(tile.y + 1, tile.z), tileXToLng(tile.x + 1, tile.z)]);
@@ -1121,7 +1134,7 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
     ctx.fillText(barMetres >= 1000 ? `${barMetres / 1000}km` : `${barMetres}m`, bx + barPx / 2, by - 5 / zoom);
 
     elementsRef.current.forEach(el => {
-      const cat = ELEMENT_CATALOG.flatMap(c => c.items).find(i => i.type === el.type);
+      const cat = ELEMENT_CATALOG.find(i => i.type === el.type);
       if (!cat) return;
       const topDownImg = imageCacheRef.current.get(el.type);
       drawShape(
@@ -1199,7 +1212,7 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
 
     render();
     return () => cancelAnimationFrame(raf);
-  }, [area, editorMapStyle, satTilesVersion, satImageStatus]);
+  }, [area, editorMapStyle, satTilesVersion, satImageStatus, isMobile]);
 
 
   useEffect(() => {
@@ -1237,7 +1250,9 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
           };
         }
 
-        canvas.width = width; canvas.height = height;
+        const dpr = Math.min(window.devicePixelRatio || 1, 3);
+        canvas.width = Math.round(width * dpr);
+        canvas.height = Math.round(height * dpr);
         canvasSize.current = { w: width, h: height };
         if (!vpInitialised.current) {
           fitParcel();
@@ -1268,7 +1283,7 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
     });
     obs.observe(canvas.parentElement);
     return () => obs.disconnect();
-  }, []);
+  }, [isMobile]);
 
 
   useEffect(() => {
@@ -1293,7 +1308,7 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
     }
     canvas.addEventListener("wheel", onWheel, { passive: false });
     return () => canvas.removeEventListener("wheel", onWheel);
-  }, []);
+  }, [isMobile]);
 
 
   useEffect(() => {
@@ -1454,6 +1469,7 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
 
 
   function onMouseDown(e: React.MouseEvent) {
+    if (touchActiveRef.current) return;
     const [sx, sy] = getCanvasXY(e);
     if (e.button === 1 || (e.button === 0 && spaceDown.current)) {
       e.preventDefault();
@@ -1494,6 +1510,7 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
   }
 
   function onMouseMove(e: React.MouseEvent) {
+    if (touchActiveRef.current) return;
     const [sx, sy] = getCanvasXY(e);
 
     if (panState.current) {
@@ -1507,7 +1524,7 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
       const el = elementsRef.current.find(i => i.id === id);
       if (!el) { stopRotateDrag(); return; }
       const [cx, cy] = worldToScreen(el.x + el.wPx / 2, el.y + el.hPx / 2);
-      const newRotation = normalizeDeg(pointerAngleDeg(cx, cy, sx, sy) - angleOffsetDeg);
+      const newRotation = Math.round(normalizeDeg(pointerAngleDeg(cx, cy, sx, sy) - angleOffsetDeg)) % 360;
       const newEls = elementsRef.current.map(i => i.id === id ? { ...i, rotation: newRotation } : i);
       pendingInteractiveRef.current = newEls;
       setElements(newEls);
@@ -1565,6 +1582,7 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
   }
 
   function onMouseUp(e: React.MouseEvent) {
+    if (touchActiveRef.current) return;
     const [sx, sy] = getCanvasXY(e);
     if (panState.current) { panState.current = null; canvasRef.current!.style.cursor = spaceDown.current ? "grab" : "default"; }
     if ((dragState.current || rotateDragRef.current) && pendingInteractiveRef.current) {
@@ -1602,6 +1620,233 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
   }, []);
 
 
+  // ── Touch handlers (mobile) ───────────────────────────────────────────
+  function getTouchXY(t: React.Touch | Touch): [number, number] {
+    const r = canvasRef.current!.getBoundingClientRect();
+    return [t.clientX - r.left, t.clientY - r.top];
+  }
+
+  function commitInteractive() {
+    if ((dragState.current || rotateDragRef.current) && pendingInteractiveRef.current) {
+      pushHistory(pendingInteractiveRef.current);
+      pendingInteractiveRef.current = null;
+    }
+  }
+
+  function onTouchStart(e: React.TouchEvent) {
+    touchActiveRef.current = true;
+    if (touchClearTimeout.current !== null) {
+      window.clearTimeout(touchClearTimeout.current);
+      touchClearTimeout.current = null;
+    }
+
+    if (e.touches.length === 2) {
+      // Begin pinch-zoom / two-finger pan
+      dragState.current = null;
+      panState.current = null;
+      stopRotateDrag();
+      touchTapRef.current = null;
+      const [a, b] = [e.touches[0], e.touches[1]];
+      const [ax, ay] = getTouchXY(a);
+      const [bx, by] = getTouchXY(b);
+      const cx = (ax + bx) / 2, cy = (ay + by) / 2;
+      pinchRef.current = {
+        startDist: Math.hypot(bx - ax, by - ay) || 1,
+        startZoom: vp.current.zoom,
+        startWorld: screenToWorld(cx, cy),
+      };
+      return;
+    }
+
+    if (e.touches.length !== 1) return;
+    const [sx, sy] = getTouchXY(e.touches[0]);
+    touchTapRef.current = { x: sx, y: sy, moved: false };
+
+    const handle = rotateHandleRef.current;
+    if (handle) {
+      const dx = sx - handle.x, dy = sy - handle.y;
+      if (Math.sqrt(dx * dx + dy * dy) <= handle.radius + 14) {
+        startRotateDrag(handle.id, sx, sy);
+        return;
+      }
+    }
+
+    const hit = hitTestScreen(sx, sy);
+    if (hit) {
+      const dragIds = selectedIdsRef.current.includes(hit.id) ? selectedIdsRef.current : [hit.id];
+      if (!selectedIdsRef.current.includes(hit.id)) setSelectedIds([hit.id]);
+      const [wx, wy] = screenToWorld(sx, sy);
+      const startPositions: Record<string, { x: number; y: number }> = {};
+      elementsRef.current.forEach(el => { if (dragIds.includes(el.id)) startPositions[el.id] = { x: el.x, y: el.y }; });
+      dragState.current = {
+        ids: dragIds,
+        startWorldX: Math.max(hit.x, Math.min(wx, hit.x + hit.wPx)),
+        startWorldY: Math.max(hit.y, Math.min(wy, hit.y + hit.hPx)),
+        startPositions,
+      };
+    } else {
+      // Empty space → pan (or tap to deselect, decided on touchend)
+      panState.current = { startX: sx, startY: sy, startVpX: vp.current.x, startVpY: vp.current.y };
+    }
+  }
+
+  function onTouchMove(e: React.TouchEvent) {
+    if (pinchRef.current && e.touches.length >= 2) {
+      const [a, b] = [e.touches[0], e.touches[1]];
+      const [ax, ay] = getTouchXY(a);
+      const [bx, by] = getTouchXY(b);
+      const cx = (ax + bx) / 2, cy = (ay + by) / 2;
+      const dist = Math.hypot(bx - ax, by - ay) || 1;
+      const p = pinchRef.current;
+      const newZoom = Math.max(0.05, Math.min(100, p.startZoom * (dist / p.startDist)));
+      const { angle } = vp.current;
+      const c = Math.cos(angle), s = Math.sin(angle);
+      const [wx, wy] = p.startWorld;
+      vp.current = {
+        ...vp.current,
+        zoom: newZoom,
+        x: cx - (wx * newZoom * c - wy * newZoom * s),
+        y: cy - (wx * newZoom * s + wy * newZoom * c),
+      };
+      setZoomDisplay(Math.round(newZoom * 100));
+      return;
+    }
+
+    if (e.touches.length !== 1) return;
+    const [sx, sy] = getTouchXY(e.touches[0]);
+    if (touchTapRef.current && (Math.abs(sx - touchTapRef.current.x) > 6 || Math.abs(sy - touchTapRef.current.y) > 6)) {
+      touchTapRef.current.moved = true;
+    }
+
+    if (rotateDragRef.current) {
+      const { id, angleOffsetDeg } = rotateDragRef.current;
+      const el = elementsRef.current.find(i => i.id === id);
+      if (!el) { stopRotateDrag(); return; }
+      const [cx, cy] = worldToScreen(el.x + el.wPx / 2, el.y + el.hPx / 2);
+      const newRotation = Math.round(normalizeDeg(pointerAngleDeg(cx, cy, sx, sy) - angleOffsetDeg)) % 360;
+      const newEls = elementsRef.current.map(i => i.id === id ? { ...i, rotation: newRotation } : i);
+      pendingInteractiveRef.current = newEls;
+      setElements(newEls);
+      return;
+    }
+
+    if (dragState.current) {
+      const { ids, startWorldX, startWorldY, startPositions } = dragState.current;
+      const dragIdsSet = new Set(ids);
+      const [wx, wy] = screenToWorld(sx, sy);
+      const dx = wx - startWorldX, dy = wy - startWorldY;
+      const nextById: Record<string, { x: number; y: number }> = {};
+      const nextRects: { id: string; x: number; y: number; w: number; h: number }[] = [];
+      for (const id of ids) {
+        const el = elementsRef.current.find(e2 => e2.id === id);
+        const sp = startPositions[id];
+        if (!el || !sp) continue;
+        const nx = snapTo(sp.x + dx), ny = snapTo(sp.y + dy);
+        if (!canPlaceElementAt(nx, ny, el.wPx, el.hPx, dragIdsSet)) return;
+        nextById[id] = { x: nx, y: ny };
+        nextRects.push({ id, x: nx, y: ny, w: el.wPx, h: el.hPx });
+      }
+      for (let i = 0; i < nextRects.length; i++) {
+        for (let j = i + 1; j < nextRects.length; j++) {
+          if (rectsOverlap(nextRects[i], nextRects[j])) return;
+        }
+      }
+      const newEls = elementsRef.current.map(el => { const n = nextById[el.id]; return n ? { ...el, ...n } : el; });
+      pendingInteractiveRef.current = newEls;
+      setElements(newEls);
+      return;
+    }
+
+    if (panState.current) {
+      const { startX, startY, startVpX, startVpY } = panState.current;
+      vp.current = { ...vp.current, x: startVpX + sx - startX, y: startVpY + sy - startY };
+    }
+  }
+
+  function onTouchEnd(e: React.TouchEvent) {
+    if (e.touches.length > 0) {
+      // A finger lifted but others remain — end pinch, keep touch active
+      pinchRef.current = null;
+      return;
+    }
+
+    commitInteractive();
+
+    const tap = touchTapRef.current;
+    const wasInteracting = !!(dragState.current || rotateDragRef.current || pinchRef.current);
+    if (tap && !tap.moved && !wasInteracting) {
+      const hit = hitTestScreen(tap.x, tap.y);
+      setSelectedIds(hit ? [hit.id] : []);
+    }
+
+    stopRotateDrag();
+    dragState.current = null;
+    panState.current = null;
+    pinchRef.current = null;
+    touchTapRef.current = null;
+
+    // Keep mouse-event suppression briefly so synthesized clicks are ignored
+    touchClearTimeout.current = window.setTimeout(() => {
+      touchActiveRef.current = false;
+      touchClearTimeout.current = null;
+    }, 400);
+  }
+
+  // ── Tap-to-place (mobile catalog) ─────────────────────────────────────
+  function findFreePlacement(wPx: number, hPx: number): { x: number; y: number } | null {
+    const { w, h } = canvasSize.current;
+    if (!w || !h) return null;
+    const [cwx, cwy] = screenToWorld(w / 2, h / 2);
+    const centre = { x: snapTo(cwx - wPx / 2), y: snapTo(cwy - hPx / 2) };
+    if (canPlaceElementAt(centre.x, centre.y, wPx, hPx)) return centre;
+
+    const { project } = makeProjection(area.points, w, h, 80);
+    const pts = area.points.map(project);
+    const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+    const minX = Math.min(...xs), maxX = Math.max(...xs);
+    const minY = Math.min(...ys), maxY = Math.max(...ys);
+    const step = Math.max(SNAP, Math.min(wPx, hPx) / 2);
+    for (let y = minY; y <= maxY - hPx; y += step) {
+      for (let x = minX; x <= maxX - wPx; x += step) {
+        const px = snapTo(x), py = snapTo(y);
+        if (canPlaceElementAt(px, py, wPx, hPx)) return { x: px, y: py };
+      }
+    }
+    return null;
+  }
+
+  function placeCatalogItem(item: any) {
+    const ppm = pixelsPerMetreRef.current;
+    const baseW = Math.max(0.0001, item.w * ppm), baseH = Math.max(0.0001, item.h * ppm);
+    const scale = Math.max(6 / baseW, 6 / baseH, 1);
+    const wPx = baseW * scale, hPx = baseH * scale;
+    const pos = findFreePlacement(wPx, hPx);
+    if (!pos) { showToast("Na parcele není volné místo"); return; }
+    const newEl: PlacedElement = { id: genId(), type: item.type, x: pos.x, y: pos.y, wPx, hPx, rotation: 0 };
+    const newElements = [...elementsRef.current, newEl];
+    setElements(newElements);
+    pushHistory(newElements);
+    setSelectedIds([newEl.id]);
+    showToast(`${item.label} přidán`);
+  }
+
+  function rotateSelectedBy(deltaDeg: number) {
+    if (selectedIdsRef.current.length === 0) return;
+    const ids = new Set(selectedIdsRef.current);
+    const newEls = elementsRef.current.map(el => ids.has(el.id) ? { ...el, rotation: normalizeDeg((el.rotation || 0) + deltaDeg) } : el);
+    setElements(newEls);
+    pushHistory(newEls);
+  }
+
+  function deleteSelected() {
+    const s = new Set(selectedIdsRef.current);
+    if (s.size === 0) return;
+    const newElements = elementsRef.current.filter(el => !s.has(el.id));
+    setElements(newElements);
+    pushHistory(newElements);
+    setSelectedIds([]);
+  }
+
   function onCatalogDragStart(e: React.DragEvent, item: any) {
     draggingCatalogItem.current = item;
     e.dataTransfer.effectAllowed = "copy";
@@ -1632,23 +1877,11 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
 
 
   const selectedElement = selectedIds.length === 1 ? (elements.find(el => el.id === selectedIds[0]) ?? null) : null;
-  const categories = ELEMENT_CATALOG.map(c => c.category);
   const normalizedSidebarSearch = normalizeSearchText(sidebarSearch.trim());
-  const filteredCatalog = ELEMENT_CATALOG
-    .map((cat) => {
-      const normalizedCategory = normalizeSearchText(cat.category);
-      const items = cat.items.filter((item) => {
-        if (activeCategory && cat.category !== activeCategory) return false;
-        if (!normalizedSidebarSearch) return true;
-        const normalizedLabel = normalizeSearchText(item.label);
-        return (
-          normalizedLabel.includes(normalizedSidebarSearch) ||
-          normalizedCategory.includes(normalizedSidebarSearch)
-        );
-      });
-      return { ...cat, items };
-    })
-    .filter(cat => cat.items.length > 0);
+  const filteredCatalog = ELEMENT_CATALOG.filter((item) => {
+    if (!normalizedSidebarSearch) return true;
+    return normalizeSearchText(item.label).includes(normalizedSidebarSearch);
+  });
 
   const parcelAreaSqM = area.areaSqKm * 1_000_000;
   const planStats: PlanStats | null = elements.length === 0 ? null
@@ -1665,7 +1898,19 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
     const exportCtx = exportCanvas.getContext("2d");
     if (!exportCtx) return;
 
+    const savedVp = { ...vp.current };
+    const { project } = makeProjection(area.points, w, h, 80);
+    const pts = area.points.map(project);
+    const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+    const pw = Math.max(...xs) - Math.min(...xs), ph = Math.max(...ys) - Math.min(...ys);
+    const fitZoom = Math.min((w - 120) / pw, (h - 120) / ph, 4);
+    const cx = (Math.min(...xs) + Math.max(...xs)) / 2;
+    const cy = (Math.min(...ys) + Math.max(...ys)) / 2;
+    vp.current = { x: w / 2 - cx * fitZoom, y: h / 2 - cy * fitZoom, zoom: fitZoom, angle: 0 };
+
     drawEditorScene(exportCtx, w, h, { selectedIds: [], hoveredId: null, showRotateHandle: false });
+
+    vp.current = savedVp;
 
     exportCanvas.toBlob(blob => {
       if (!blob) {
@@ -1728,17 +1973,273 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
   }
 
 
-  if (tooSmall) {
+  if (isMobile) {
+    const tempColor = !planStats || planStats.tempDelta === 0 ? "#2e3a1f66"
+      : planStats.tempDelta < -1.5 ? "#2a7d4f"
+      : planStats.tempDelta < -0.5 ? "#5a9e72"
+      : "#8ab89a";
+    const tempLabel = !planStats || planStats.tempDelta === 0 ? "—" : `${planStats.tempDelta.toFixed(1)} °C`;
+    const closeSheet = () => setMobileSheet("none");
+    const sheetBase: React.CSSProperties = {
+      position: "absolute", left: 0, right: 0, bottom: 0, zIndex: 30,
+      background: "#F4F5E0", borderTop: "1.5px solid #2e3a1f22",
+      borderTopLeftRadius: 16, borderTopRightRadius: 16,
+      boxShadow: "0 -8px 30px #2e3a1f22", display: "flex", flexDirection: "column",
+      animation: "fadeInUp 0.22s ease",
+    };
+    const sheetHandle = (
+      <div style={{ display: "flex", justifyContent: "center", paddingTop: 8, flexShrink: 0 }}>
+        <div style={{ width: 38, height: 4, borderRadius: 2, background: "#2e3a1f33" }} />
+      </div>
+    );
+    const iconBtn: React.CSSProperties = {
+      width: 40, height: 40, display: "flex", alignItems: "center", justifyContent: "center",
+      background: "none", border: "none", cursor: "pointer", color: "#2e3a1f", fontFamily: "inherit",
+    };
+
     return (
-      <div style={{ position: "fixed", inset: 0, zIndex: 4000, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", background: "#F4F5E0", fontFamily: "'PT Sans', sans-serif", padding: 32, textAlign: "center" }}>
-        <div style={{ marginBottom: 20, opacity: 0.4, display: "flex", justifyContent: "center" }}><Monitor size={40} /></div>
-        <h2 style={{ fontSize: 22, fontWeight: 400, color: "#2e3a1f", fontStyle: "italic", marginBottom: 10, lineHeight: 1.3 }}>Editor vyžaduje větší obrazovku</h2>
-        <p style={{ fontSize: 13, color: "#2e3a1f77", maxWidth: 320, lineHeight: 1.6, marginBottom: 28 }}>
-          Plánovač parcely je dostupný pouze na zařízeních se šířkou obrazovky alespoň 960 px. Otevřete jej na počítači nebo tabletu v režimu na šířku.
-        </p>
-        <button onClick={onBack} style={{ padding: "10px 24px", background: "#2e3a1f", color: "#F4F5E0", border: "none", borderRadius: 999, fontSize: 13, fontFamily: "inherit", cursor: "pointer", letterSpacing: "0.04em" }}>
-          ← Zpět na výsledky
-        </button>
+      <div style={{ position: "fixed", inset: 0, zIndex: 4000, display: "flex", flexDirection: "column", background: "#F4F5E0", fontFamily: "'PT Sans', sans-serif", overflow: "hidden" }}>
+
+        {/* Header */}
+        <header style={{ height: 50, flexShrink: 0, borderBottom: "1.5px solid #2e3a1f22", display: "flex", alignItems: "center", paddingRight: 4 }}>
+          <button onClick={onBack} style={{ ...iconBtn, width: 48 }}><ArrowLeft size={18} /></button>
+          <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", justifyContent: "center" }}>
+            <span style={{ fontSize: 14, fontStyle: "italic", color: "#2e3a1f", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {areas.length > 1 ? `Parcela ${activeParcelIdx + 1}` : "Editor parcely"}
+            </span>
+            <span style={{ fontSize: 10, color: "#2e3a1f66", letterSpacing: "0.03em" }}>
+              {elements.length} {elements.length === 1 ? "prvek" : elements.length >= 2 && elements.length <= 4 ? "prvky" : "prvků"} · {formatAreaByMagnitude(area.areaSqKm)}
+            </span>
+          </div>
+          <button onClick={undo} disabled={!canUndo} style={{ ...iconBtn, color: canUndo ? "#2e3a1f99" : "#2e3a1f28" }}><Undo2 size={17} /></button>
+          <button onClick={redo} disabled={!canRedo} style={{ ...iconBtn, color: canRedo ? "#2e3a1f99" : "#2e3a1f28" }}><Redo2 size={17} /></button>
+          <button onClick={() => setMobileSheet(s => s === "menu" ? "none" : "menu")} style={iconBtn}><MoreVertical size={18} /></button>
+        </header>
+
+        {/* Parcel tabs */}
+        {areas.length > 1 && (
+          <div style={{ height: 38, flexShrink: 0, borderBottom: "1.5px solid #2e3a1f22", display: "flex", alignItems: "stretch", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+            {areas.map((a, idx) => (
+              <button key={idx} onClick={() => setActiveParcelIdx(idx)}
+                style={{
+                  padding: "0 14px", background: "none", border: "none", cursor: "pointer", fontFamily: "inherit",
+                  fontSize: 12, whiteSpace: "nowrap", flexShrink: 0,
+                  color: activeParcelIdx === idx ? "#2e3a1f" : "#2e3a1f66",
+                  borderBottom: activeParcelIdx === idx ? "2.5px solid #2e3a1f" : "2.5px solid transparent",
+                }}>
+                Parcela {idx + 1}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Canvas */}
+        <div style={{ flex: 1, position: "relative", overflow: "hidden" }}>
+          <canvas ref={canvasRef}
+            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block", touchAction: "none" }}
+            onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}
+            onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} onTouchCancel={onTouchEnd} />
+
+          {/* Zoom indicator */}
+          <div style={{ position: "absolute", top: 10, right: 10, background: "#F4F5E0cc", border: "1.5px solid #2e3a1f22", borderRadius: 999, padding: "3px 10px", fontSize: 11, color: "#2e3a1f99", pointerEvents: "none" }}>
+            {zoomDisplay}%
+          </div>
+
+          {elements.length === 0 && (
+            <div style={{ position: "absolute", bottom: 18, left: "50%", transform: "translateX(-50%)", pointerEvents: "none", textAlign: "center", width: "90%" }}>
+              <p style={{ fontSize: 12, color: "#2e3a1f66", fontStyle: "italic" }}>
+                Klepněte na „Přidat" a vyberte prvky pro parcelu
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Selection toolbar */}
+        {selectedIds.length > 0 && mobileSheet === "none" && (
+          <div style={{ flexShrink: 0, borderTop: "1.5px solid #2e3a1f22", background: "#2e3a1f", display: "flex", alignItems: "center", height: 52, paddingLeft: 14 }}>
+            <span style={{ fontSize: 12, color: "#F4F5E0cc", flex: 1, letterSpacing: "0.03em" }}>
+              {selectedIds.length === 1 ? (ELEMENT_CATALOG.find(i => i.type === selectedElement?.type)?.label ?? "Prvek") : `Vybráno: ${selectedIds.length}`}
+            </span>
+            <button onClick={() => rotateSelectedBy(-15)} style={{ ...iconBtn, color: "#F4F5E0" }}><RotateCcw size={18} /></button>
+            <button onClick={() => rotateSelectedBy(15)} style={{ ...iconBtn, color: "#F4F5E0" }}><RotateCw size={18} /></button>
+            {selectedIds.length === 1 && (
+              <button onClick={() => setMobileSheet("inspector")} style={{ ...iconBtn, width: "auto", padding: "0 14px", fontSize: 12, color: "#F4F5E0" }}>Upravit</button>
+            )}
+            <button onClick={deleteSelected} style={{ ...iconBtn, color: "#ffb4b4" }}><Trash2 size={18} /></button>
+          </div>
+        )}
+
+        {/* Bottom bar */}
+        {!(selectedIds.length > 0 && mobileSheet === "none") && (
+          <div style={{ flexShrink: 0, borderTop: "1.5px solid #2e3a1f22", background: "#F4F5E0", display: "flex", alignItems: "stretch", height: 60 }}>
+            <button onClick={() => setMobileSheet(s => s === "summary" ? "none" : "summary")}
+              style={{ flex: 1, background: "none", border: "none", borderRight: "1.5px solid #2e3a1f15", cursor: "pointer", fontFamily: "inherit", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "flex-start", padding: "0 16px", gap: 2 }}>
+              <span style={{ fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", color: "#2e3a1f77" }}>Celkem</span>
+              <span style={{ fontSize: 13, fontStyle: "italic", color: "#2e3a1f" }}>
+                {planStats ? `${formatCZK(planStats.totalMin)} – ${formatCZK(planStats.totalMax)}` : "žádné prvky"}
+              </span>
+            </button>
+            <button onClick={() => setMobileSheet("catalog")}
+              style={{ width: 130, flexShrink: 0, background: "#2e3a1f", color: "#F4F5E0", border: "none", cursor: "pointer", fontFamily: "inherit", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, fontSize: 14, letterSpacing: "0.04em" }}>
+              <Plus size={18} /> Přidat
+            </button>
+          </div>
+        )}
+
+        {/* Backdrop */}
+        {mobileSheet !== "none" && (
+          <div onClick={closeSheet} style={{ position: "absolute", inset: 0, background: "#2e3a1f44", zIndex: 25 }} />
+        )}
+
+        {/* Catalog sheet */}
+        {mobileSheet === "catalog" && (
+          <div style={{ ...sheetBase, height: "72%" }}>
+            {sheetHandle}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 14px 10px" }}>
+              <input value={sidebarSearch} onChange={e => setSidebarSearch(e.target.value)} placeholder="Hledat prvky…"
+                style={{ flex: 1, padding: "10px 12px", border: "1.5px solid #2e3a1f22", borderRadius: 8, background: "#2e3a1f08", fontSize: 14, fontFamily: "inherit", color: "#2e3a1f", outline: "none" }} />
+              <button onClick={closeSheet} style={iconBtn}><X size={20} /></button>
+            </div>
+            <div style={{ flex: 1, overflowY: "auto", padding: "0 14px 20px", WebkitOverflowScrolling: "touch" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+                {filteredCatalog.map(item => {
+                  const p = ELEMENT_PRICES[item.type];
+                  const priceLabel = p ? `${p.min >= 1000 ? `${(p.min / 1000).toFixed(p.min % 1000 === 0 ? 0 : 1)}k` : p.min}–${p.max >= 1000 ? `${(p.max / 1000).toFixed(p.max % 1000 === 0 ? 0 : 1)}k` : p.max}` : null;
+                  return (
+                    <button key={item.type} onClick={() => placeCatalogItem(item)}
+                      style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 5, padding: "12px 4px", border: "1.5px solid #2e3a1f18", borderRadius: 10, background: "#2e3a1f05", cursor: "pointer", fontFamily: "inherit" }}>
+                      <div style={{ width: 40, height: 40, borderRadius: 8, background: item.color + "33", border: `1.5px solid ${item.color}66`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>
+                        {item.icon}
+                      </div>
+                      <span style={{ fontSize: 9.5, letterSpacing: "0.03em", color: "#2e3a1f99", textAlign: "center", lineHeight: 1.2 }}>{item.label}</span>
+                      {priceLabel && <span style={{ fontSize: 8.5, color: "#2e3a1f55" }}>{priceLabel} Kč</span>}
+                    </button>
+                  );
+                })}
+              </div>
+              {filteredCatalog.length === 0 && (
+                <div style={{ fontSize: 13, color: "#2e3a1f44", fontStyle: "italic", textAlign: "center", paddingTop: 30 }}>Nenalezeny žádné prvky</div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Inspector sheet */}
+        {mobileSheet === "inspector" && (
+          <div style={{ ...sheetBase, maxHeight: "70%" }}>
+            {sheetHandle}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "4px 8px 0 16px" }}>
+              <span style={{ fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "#2e3a1f88" }}>Vlastnosti</span>
+              <button onClick={closeSheet} style={iconBtn}><X size={20} /></button>
+            </div>
+            <div style={{ overflowY: "auto" }}>
+              <PropertiesPanel
+                item={selectedElement}
+                selectedCount={selectedIds.length}
+                onChange={updated => setElements(prev => prev.map(el => el.id === updated.id ? updated : el))}
+                onCommit={updated => {
+                  const newElements = elementsRef.current.map(el => el.id === updated.id ? updated : el);
+                  pushHistory(newElements);
+                }}
+                onDelete={() => { deleteSelected(); closeSheet(); }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Summary sheet */}
+        {mobileSheet === "summary" && (
+          <div style={{ ...sheetBase, maxHeight: "78%" }}>
+            {sheetHandle}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "4px 8px 8px 16px" }}>
+              <span style={{ fontSize: 11, letterSpacing: "0.1em", textTransform: "uppercase", color: "#2e3a1f88" }}>Shrnutí plánu</span>
+              <button onClick={closeSheet} style={iconBtn}><X size={20} /></button>
+            </div>
+            <div style={{ overflowY: "auto", padding: "0 16px 24px" }}>
+              <div style={{ display: "flex", gap: 12, marginBottom: 16 }}>
+                <div style={{ flex: 1, padding: "12px 14px", borderRadius: 10, background: "#2e3a1f08", border: "1.5px solid #2e3a1f12" }}>
+                  <div style={{ fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", color: "#2e3a1f66", marginBottom: 4 }}>Celkem</div>
+                  <div style={{ fontSize: 14, fontStyle: "italic", color: "#2e3a1f" }}>{planStats ? `${formatCZK(planStats.totalMin)} – ${formatCZK(planStats.totalMax)}` : "—"}</div>
+                </div>
+                <div style={{ width: 110, flexShrink: 0, padding: "12px 14px", borderRadius: 10, background: "#2e3a1f08", border: "1.5px solid #2e3a1f12" }}>
+                  <div style={{ fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", color: "#2e3a1f66", marginBottom: 4 }}>Přibližné ochlazení</div>
+                  <div style={{ fontSize: 14, fontStyle: "italic", color: tempColor }}>{tempLabel}</div>
+                </div>
+              </div>
+
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                  <span style={{ fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "#2e3a1f66" }}>Pokrytí</span>
+                  <span style={{ fontSize: 11, color: "#2e3a1f99" }}>{planStats ? `${planStats.coveragePct.toFixed(0)}%` : "0%"}</span>
+                </div>
+                <div style={{ height: 6, borderRadius: 3, background: "#2e3a1f15", overflow: "hidden" }}>
+                  <div style={{ height: "100%", borderRadius: 3, background: "#4A7C59", width: `${Math.min(100, planStats?.coveragePct ?? 0)}%`, transition: "width 0.3s ease" }} />
+                </div>
+              </div>
+
+              <div style={{ fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "#2e3a1f66", marginBottom: 8 }}>Rozpis nákladů</div>
+              {!planStats || planStats.breakdown.length === 0
+                ? <div style={{ fontSize: 13, color: "#2e3a1f44", fontStyle: "italic", marginBottom: 16 }}>Zatím žádné prvky</div>
+                : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 16 }}>
+                    {planStats.breakdown.map(item => (
+                      <div key={item.label} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <span style={{ fontSize: 15, width: 22, textAlign: "center" }}>{item.icon}</span>
+                        <span style={{ fontSize: 12, color: "#2e3a1f", flex: 1 }}>{item.label}</span>
+                        <span style={{ fontSize: 11, color: "#2e3a1f88" }}>×{item.count}</span>
+                        <span style={{ fontSize: 11, color: "#2e3a1f66", fontStyle: "italic", minWidth: 96, textAlign: "right" }}>{formatCZK(item.min)} – {formatCZK(item.max)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+              <div style={{ fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "#2e3a1f66", marginBottom: 8 }}>Klimatická mapa</div>
+              <ClimateMap area={area} height={200} mode="czech" />
+            </div>
+          </div>
+        )}
+
+        {/* Menu sheet */}
+        {mobileSheet === "menu" && (
+          <div style={{ ...sheetBase }}>
+            {sheetHandle}
+            <div style={{ padding: "8px 0 16px" }}>
+              <div style={{ display: "flex", gap: 8, padding: "8px 16px 12px" }}>
+                {(["map", "satellite"] as const).map(style => (
+                  <button key={style} onClick={() => setEditorMapStyle(style)}
+                    style={{ flex: 1, padding: "10px", borderRadius: 8, border: "1.5px solid #2e3a1f33", background: editorMapStyle === style ? "#2e3a1f" : "transparent", color: editorMapStyle === style ? "#F4F5E0" : "#2e3a1f99", fontSize: 13, fontFamily: "inherit", cursor: "pointer" }}>
+                    {style === "map" ? "Mapa" : "Satelit"}
+                  </button>
+                ))}
+              </div>
+              {([
+                { label: "Přizpůsobit parcelu", icon: <Maximize2 size={18} />, onClick: () => { fitParcel(); closeSheet(); } },
+                { label: "Otočit pohled o −15°", icon: <RotateCcw size={18} />, onClick: () => rotateViewport(-15 * Math.PI / 180) },
+                { label: "Otočit pohled o +15°", icon: <RotateCw size={18} />, onClick: () => rotateViewport(15 * Math.PI / 180) },
+                { label: "Exportovat plán (PNG)", icon: <Maximize2 size={18} />, onClick: () => { exportPlan(); closeSheet(); } },
+                { label: "Sdílet odkaz", icon: <Plus size={18} />, onClick: () => { sharePlan(); closeSheet(); } },
+                { label: "Vymazat vše", icon: <Trash2 size={18} />, danger: true, onClick: () => { setElements([]); setSelectedIds([]); pushHistory([]); closeSheet(); } },
+              ] as const).map(row => (
+                <button key={row.label} onClick={row.onClick}
+                  style={{ width: "100%", display: "flex", alignItems: "center", gap: 14, padding: "14px 20px", background: "none", border: "none", borderTop: "1px solid #2e3a1f0d", cursor: "pointer", fontFamily: "inherit", fontSize: 14, color: (row as any).danger ? "#cc4444" : "#2e3a1f", textAlign: "left" }}>
+                  <span style={{ display: "flex", opacity: 0.75 }}>{row.icon}</span>
+                  {row.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {toastMessage && (
+          <div style={{
+            position: "fixed", bottom: 90, left: "50%", transform: "translateX(-50%)",
+            background: "#2e3a1f", color: "#F4F5E0", padding: "10px 22px",
+            borderRadius: 999, fontSize: 12, fontFamily: "inherit", letterSpacing: "0.04em",
+            zIndex: 9999, pointerEvents: "none", animation: "fadeInUpCenter 0.2s ease", maxWidth: "85%", textAlign: "center",
+          }}>
+            {toastMessage}
+          </div>
+        )}
       </div>
     );
   }
@@ -1839,27 +2340,10 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
             <input value={sidebarSearch} onChange={e => setSidebarSearch(e.target.value)} placeholder="Hledat prvky…"
               style={{ width: "100%", padding: "7px 10px", border: "1.5px solid #2e3a1f22", borderRadius: 3, background: "#2e3a1f08", fontSize: 12, fontFamily: "inherit", color: "#2e3a1f", outline: "none", boxSizing: "border-box" }} />
           </div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 4, padding: "8px 10px", borderBottom: "1.5px solid #2e3a1f11" }}>
-            <button onClick={() => setActiveCategory(null)}
-              style={{ fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase", padding: "3px 7px", borderRadius: 3, border: "1.5px solid", cursor: "pointer", fontFamily: "inherit", borderColor: activeCategory === null ? "#2e3a1f" : "#2e3a1f33", background: activeCategory === null ? "#2e3a1f" : "transparent", color: activeCategory === null ? "#F4F5E0" : "#2e3a1f77" }}>
-              Vše
-            </button>
-            {categories.map(cat => (
-              <button key={cat} onClick={() => setActiveCategory(activeCategory === cat ? null : cat)}
-                style={{ fontSize: 9, letterSpacing: "0.08em", textTransform: "uppercase", padding: "3px 7px", borderRadius: 3, border: "1.5px solid", cursor: "pointer", fontFamily: "inherit", borderColor: activeCategory === cat ? "#2e3a1f" : "#2e3a1f33", background: activeCategory === cat ? "#2e3a1f" : "transparent", color: activeCategory === cat ? "#F4F5E0" : "#2e3a1f77" }}>
-                {cat}
-              </button>
-            ))}
-          </div>
           <div style={{ flex: 1, overflowY: "auto", padding: "8px", overflowX: "visible" }}>
-            {filteredCatalog.map(cat => (
-              <div key={cat.category} style={{ marginBottom: 16 }}>
-                <div style={{ fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "#2e3a1f55", marginBottom: 6, padding: "0 4px" }}>{cat.category}</div>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 2, position: "relative" }}>
-                  {cat.items.map(item => <CatalogItem key={item.type} item={item} onDragStart={onCatalogDragStart} />)}
-                </div>
-              </div>
-            ))}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 2, position: "relative" }}>
+              {filteredCatalog.map(item => <CatalogItem key={item.type} item={item} onDragStart={onCatalogDragStart} />)}
+            </div>
             {filteredCatalog.length === 0 && (
               <div style={{ fontSize: 12, color: "#2e3a1f44", fontStyle: "italic", textAlign: "center", paddingTop: 20 }}>Nenalezeny žádné prvky</div>
             )}
@@ -1877,8 +2361,9 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
             </div>
           )}
           <canvas ref={canvasRef}
-            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block" }}
-            onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp} />
+            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "block", touchAction: "none" }}
+            onMouseDown={onMouseDown} onMouseMove={onMouseMove} onMouseUp={onMouseUp} onMouseLeave={onMouseUp}
+            onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} onTouchCancel={onTouchEnd} />
           {selectionBox && (
             <div style={{
               position: "absolute",
@@ -1941,7 +2426,7 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
                 Vrstvy ({elements.length})
               </div>
               {[...elements].reverse().map(el => {
-                const cat = ELEMENT_CATALOG.flatMap(c => c.items).find(i => i.type === el.type);
+                const cat = ELEMENT_CATALOG.find(i => i.type === el.type);
                 const isSel = selectedIds.includes(el.id);
                 return (
                   <div key={el.id}
@@ -1973,7 +2458,7 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
           background: "#2e3a1f", color: "#F4F5E0", padding: "10px 22px",
           borderRadius: 999, fontSize: 12, fontFamily: "inherit", letterSpacing: "0.04em",
           zIndex: 9999, pointerEvents: "none",
-          animation: "fadeInUp 0.2s ease",
+          animation: "fadeInUpCenter 0.2s ease",
         }}>
           {toastMessage}
         </div>
