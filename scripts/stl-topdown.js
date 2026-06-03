@@ -149,9 +149,33 @@ async function parseGLB(buffer) {
   return tris;
 }
 
-function stlAxes(v)  { return [v[1], v[0], v[2]]; }
+// === ÚHEL NÁHLEDU ===
+const AZIMUTH_DEG = 25;  // rotace okolo svislé osy (vlevo/vpravo)
+const TILT_DEG    = 58;  // náklon od pohledu shora (0 = shora, 90 = zboku) → výška = 32°
+const TO_RAD      = Math.PI / 180;
 
-function glbAxes(v)  { return [v[0], v[1], v[2]]; }
+function rotateZ(v, a) {
+  const c = Math.cos(a), s = Math.sin(a);
+  return [v[0]*c - v[1]*s, v[0]*s + v[1]*c, v[2]];
+}
+function rotateX(v, a) {
+  const c = Math.cos(a), s = Math.sin(a);
+  return [v[0], v[1]*c - v[2]*s, v[1]*s + v[2]*c];
+}
+
+function stlAxes(v) {
+  let p = [v[1], v[0], v[2]];
+  p = rotateZ(p,  AZIMUTH_DEG * TO_RAD);
+  p = rotateX(p, -TILT_DEG   * TO_RAD);
+  return p;
+}
+
+function glbAxes(v) {
+  let p = [v[0], v[1], v[2]];
+  p = rotateZ(p,  AZIMUTH_DEG * TO_RAD);
+  p = rotateX(p, -TILT_DEG   * TO_RAD);
+  return p;
+}
 
 function renderTopDown(triangles, toScreen) {
   let minX=Infinity, maxX=-Infinity, minY=Infinity, maxY=-Infinity, minZ=Infinity, maxZ=-Infinity;
@@ -179,7 +203,7 @@ function renderTopDown(triangles, toScreen) {
   const sx = wx => (wx - pMinX)*scale + offX;
   const sy = wy => imgH - 1 - ((wy - pMinY)*scale + offY);
 
-  const pixels = new Uint8Array(imgW * imgH * 3).fill(242);
+  const pixels = new Uint8Array(imgW * imgH * 4).fill(0);  // RGBA, průhledné pozadí
   const zbuf   = new Float32Array(imgW * imgH).fill(-Infinity);
 
   for (const tri of triangles) {
@@ -189,7 +213,7 @@ function renderTopDown(triangles, toScreen) {
     const bx=sx(b[0]), by=sy(b[1]);
     const cx=sx(c[0]), cy=sy(c[1]);
 
-    const [nx, ny, nz] = normalizeVec(...tri.normal);
+    const [nx, ny, nz] = normalizeVec(...toScreen(tri.normal));  // normály transformovat stejně jako vrcholy
     const diffuse = Math.max(0, nz);
     const fill    = Math.max(0, 0.5*ny + 0.5*nz);
     let bright = 0.25 + 0.65*diffuse + 0.1*fill;
@@ -217,9 +241,10 @@ function renderTopDown(triangles, toScreen) {
 
         const dep = (z-minZ)/rangeZ;
         const f = bright * (0.85 + 0.15*dep);
-        pixels[idx*3]   = Math.min(255, Math.round(207*f));
-        pixels[idx*3+1] = Math.min(255, Math.round(214*f));
-        pixels[idx*3+2] = Math.min(255, Math.round(223*f));
+        pixels[idx*4]   = Math.min(255, Math.round(207*f));
+        pixels[idx*4+1] = Math.min(255, Math.round(214*f));
+        pixels[idx*4+2] = Math.min(255, Math.round(223*f));
+        pixels[idx*4+3] = 255;
       }
     }
   }
@@ -232,18 +257,18 @@ function normalizeVec(x, y, z) {
 }
 
 function writePNG(pixels, w, h, outPath) {
-  const raw = Buffer.alloc((w*3+1)*h);
+  const raw = Buffer.alloc((w*4+1)*h);  // RGBA: 4 bytes per pixel
   for (let y=0; y<h; y++) {
-    raw[y*(w*3+1)] = 0;
+    raw[y*(w*4+1)] = 0;
     for (let x=0; x<w; x++) {
-      const s=(y*w+x)*3, d=y*(w*3+1)+1+x*3;
-      raw[d]=pixels[s]; raw[d+1]=pixels[s+1]; raw[d+2]=pixels[s+2];
+      const s=(y*w+x)*4, d=y*(w*4+1)+1+x*4;
+      raw[d]=pixels[s]; raw[d+1]=pixels[s+1]; raw[d+2]=pixels[s+2]; raw[d+3]=pixels[s+3];
     }
   }
   const compressed = zlib.deflateSync(raw, { level: 6 });
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(w,0); ihdr.writeUInt32BE(h,4);
-  ihdr[8]=8; ihdr[9]=2;
+  ihdr[8]=8; ihdr[9]=6;  // color type 6 = RGBA
   fs.writeFileSync(outPath, Buffer.concat([
     Buffer.from([137,80,78,71,13,10,26,10]),
     chunk("IHDR", ihdr), chunk("IDAT", compressed), chunk("IEND", Buffer.alloc(0)),
@@ -276,7 +301,7 @@ function crc32(buf) {
 
   for (const file of files) {
     const inPath  = path.join(publicDir, file);
-    const outName = file.replace(/\.(stl|glb)$/i, "-top.png");
+    const outName = file.replace(/\.(stl|glb)$/i, "-preview.png");
     const outPath = path.join(publicDir, outName);
 
     process.stdout.write(`Rendering ${file} … `);

@@ -1,16 +1,14 @@
 "use client";
 
-import dynamic from "next/dynamic";
+import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
-const StlPreview = dynamic(() => import("./StlPreview"), { ssr: false });
-
 const MODELS = [
-  { name: "Rostlinná brána",           modelPath: encodeURI("/Rostliná brána.stl"), rotationPeriodMs: 8200 },
-  { name: "Rostlinná stěna",           modelPath: encodeURI("/Rostliná stěna.stl"), rotationPeriodMs: 7000 },
-  { name: "Zelená zastávka",           modelPath: "/Zelena_Zastavka.glb",           rotationPeriodMs: 7800 },
-  { name: "Zastíněné parkovací místo", modelPath: "/P.stl",                         rotationPeriodMs: 8000 },
+  { name: "Rostlinná brána",           topImagePath: encodeURI("/Rostliná brána-preview.png") },
+  { name: "Rostlinná stěna",           topImagePath: encodeURI("/Rostliná stěna-preview.png") },
+  { name: "Zelená zastávka",           topImagePath: "/Zelena_Zastavka-preview.png" },
+  { name: "Zastíněné parkovací místo", topImagePath: "/P-preview.png" },
 ];
 
 const ITEMS = [...MODELS, ...MODELS, ...MODELS];
@@ -99,11 +97,13 @@ export default function Features() {
                 key={i}
                 className="w-64 shrink-0 bg-fg border border-btn/35 rounded-2xl p-4 flex flex-col items-center gap-3"
               >
-                <div className="w-full h-56">
-                  <StlPreview
-                    modelPath={model.modelPath}
-                    zoom={1}
-                    rotationPeriodMs={model.rotationPeriodMs}
+                <div className="relative w-full h-56">
+                  <Image
+                    src={model.topImagePath}
+                    alt={model.name}
+                    fill
+                    className="object-contain"
+                    sizes="256px"
                   />
                 </div>
                 <p className="font-display text-sm text-text text-center leading-tight">
