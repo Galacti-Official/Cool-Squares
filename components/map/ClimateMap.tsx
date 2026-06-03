@@ -340,8 +340,8 @@ function buildContinuousOverlay(
   const expected = gridSize * gridSize;
   if (samples.length !== expected) return null;
 
-  const width = 1024;
-  const height = 1024;
+  const width = 512;
+  const height = 512;
   const canvas = document.createElement("canvas");
   canvas.width = width;
   canvas.height = height;
@@ -358,6 +358,10 @@ function buildContinuousOverlay(
 
   const imageData = ctx.createImageData(width, height);
   const data = imageData.data;
+  // HSL(hue, 72%, 52%) constants — s=0.72, l=0.52
+  const C = 0.6912; // (1 - |2l-1|) * s
+  const M = 0.1744; // l - C/2
+  const safeSpan = Math.max(maxTemp - minTemp, 0.001);
 
   for (let py = 0; py < height; py++) {
     const gy = (py / (height - 1)) * (gridSize - 1);
@@ -380,11 +384,20 @@ function buildContinuousOverlay(
 
       const temp = seaLevelTemp - elev * LAPSE_RATE;
 
-      const [r, g, b] = parseHslColor(colorFromTemperature(temp, minTemp, maxTemp));
+      const t = Math.min(1, Math.max(0, (temp - minTemp) / safeSpan));
+      const hue = 210 - t * 180;
+      const X = C * (1 - Math.abs(((hue / 60) % 2) - 1));
+      let cr = 0, cg = 0, cb = 0;
+      if (hue < 60) { cr = C; cg = X; }
+      else if (hue < 120) { cr = X; cg = C; }
+      else if (hue < 180) { cg = C; cb = X; }
+      else if (hue < 240) { cg = X; cb = C; }
+      else if (hue < 300) { cr = X; cb = C; }
+      else { cr = C; cb = X; }
       const idx = (py * width + px) * 4;
-      data[idx] = r;
-      data[idx + 1] = g;
-      data[idx + 2] = b;
+      data[idx] = Math.round((cr + M) * 255);
+      data[idx + 1] = Math.round((cg + M) * 255);
+      data[idx + 2] = Math.round((cb + M) * 255);
       data[idx + 3] = 150;
     }
   }

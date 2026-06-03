@@ -198,7 +198,8 @@ function normalizeSearchText(value: string): string {
 }
 
 const SNAP = 5;
-const HIT_PADDING_PX = 12;
+const HIT_PADDING_PX = 5;
+const OBJECT_MARGIN_PX = 1;
 function snapTo(v: number) { return Math.round(v / SNAP) * SNAP; }
 function genId() { return Math.random().toString(36).slice(2, 9); }
 
@@ -268,7 +269,8 @@ function drawShape(
   item: any,
   x: number, y: number, w: number, h: number,
   selected: boolean, hovered: boolean,
-  topDownImage?: HTMLImageElement
+  topDownImage?: HTMLImageElement,
+  zoom = 1
 ) {
   const { shape, color } = item;
   ctx.save();
@@ -357,12 +359,13 @@ function drawShape(
   }
 
   if (selected) {
+    const sp = 2 / zoom;
+    const tick = 4 / zoom, ox = hw + sp * 2, oy = hh + sp * 2;
     ctx.shadowBlur = 0;
     ctx.strokeStyle = "#2e3a1f";
-    ctx.lineWidth = 2.5; ctx.setLineDash([]);
-    ctx.strokeRect(-hw - 5, -hh - 5, w + 10, h + 10);
-    const tick = 5, ox = hw + 7, oy = hh + 7;
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 2.5 / zoom; ctx.setLineDash([]);
+    ctx.strokeRect(-hw - sp, -hh - sp, w + sp * 2, h + sp * 2);
+    ctx.lineWidth = 2 / zoom;
     ctx.beginPath();
     ctx.moveTo(-ox, -oy + tick); ctx.lineTo(-ox, -oy); ctx.lineTo(-ox + tick, -oy);
     ctx.moveTo(ox - tick, -oy); ctx.lineTo(ox, -oy); ctx.lineTo(ox, -oy + tick);
@@ -1146,7 +1149,8 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
         el.hPx,
         selectedForRender.includes(el.id),
         el.id === hoveredForRender,
-        topDownImg?.complete ? topDownImg : undefined
+        topDownImg?.complete ? topDownImg : undefined,
+        zoom
       );
     });
 
@@ -1447,7 +1451,8 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
     const { project } = makeProjection(area.points, w, h, 80);
     if (!rectWithinPolygon(x, y, wPx, hPx, area.points.map(project))) return false;
 
-    const candidate = { x, y, w: wPx, h: hPx };
+    const m = OBJECT_MARGIN_PX;
+    const candidate = { x: x - m, y: y - m, w: wPx + m * 2, h: hPx + m * 2 };
     for (const el of elementsRef.current) {
       if (ignoreIds.has(el.id)) continue;
       if (rectsOverlap(candidate, { x: el.x, y: el.y, w: el.wPx, h: el.hPx })) return false;
@@ -1551,7 +1556,9 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
 
       for (let i = 0; i < nextRects.length; i++) {
         for (let j = i + 1; j < nextRects.length; j++) {
-          if (rectsOverlap(nextRects[i], nextRects[j])) return;
+          const m = OBJECT_MARGIN_PX;
+          const a = nextRects[i];
+          if (rectsOverlap({ x: a.x - m, y: a.y - m, w: a.w + m * 2, h: a.h + m * 2 }, nextRects[j])) return;
         }
       }
       const newEls = elementsRef.current.map(el => { const n = nextById[el.id]; return n ? { ...el, ...n } : el; });
@@ -1748,7 +1755,9 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
       }
       for (let i = 0; i < nextRects.length; i++) {
         for (let j = i + 1; j < nextRects.length; j++) {
-          if (rectsOverlap(nextRects[i], nextRects[j])) return;
+          const m = OBJECT_MARGIN_PX;
+          const a = nextRects[i];
+          if (rectsOverlap({ x: a.x - m, y: a.y - m, w: a.w + m * 2, h: a.h + m * 2 }, nextRects[j])) return;
         }
       }
       const newEls = elementsRef.current.map(el => { const n = nextById[el.id]; return n ? { ...el, ...n } : el; });
@@ -1785,14 +1794,12 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
     pinchRef.current = null;
     touchTapRef.current = null;
 
-    // Keep mouse-event suppression briefly so synthesized clicks are ignored
     touchClearTimeout.current = window.setTimeout(() => {
       touchActiveRef.current = false;
       touchClearTimeout.current = null;
     }, 400);
   }
 
-  // ── Tap-to-place (mobile catalog) ─────────────────────────────────────
   function findFreePlacement(wPx: number, hPx: number): { x: number; y: number } | null {
     const { w, h } = canvasSize.current;
     if (!w || !h) return null;
