@@ -2,8 +2,11 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import dynamic from "next/dynamic";
 import { ITEMS, type Item } from "./itemData";
-import { Search, ChevronDown, X } from 'lucide-react';
+import { Search, ChevronDown, X, RotateCcw, AlertTriangle } from 'lucide-react';
+
+const StlPreview = dynamic(() => import("../StlPreview"), { ssr: false });
 
 const COST_COLOR: Record<string, string> = {
   low: "bg-emerald-100 text-emerald-700",
@@ -269,6 +272,12 @@ function ItemCard({ item, onClick }: { item: Item; onClick: () => void }) {
         <span className={`${BADGE} bg-fg text-text-mid`}>
           Zálivka: {item.waterFrequency ?? "Bez potřeby"}
         </span>
+        {item.tags.includes("nemodulární") && (
+          <span className={`${BADGE} bg-red-100 text-red-700 font-bold flex items-center gap-1`}>
+            <AlertTriangle size={11} />
+            NEMODULÁRNÍ
+          </span>
+        )}
       </div>
     </button>
   );
@@ -276,6 +285,7 @@ function ItemCard({ item, onClick }: { item: Item; onClick: () => void }) {
 
 function DetailPanel({ item, onClose }: { item: Item; onClose: () => void }) {
   const priceLabel = getItemPriceLabel(item);
+  const isNonModular = item.tags.includes("nemodulární");
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 sm:p-8">
@@ -299,6 +309,39 @@ function DetailPanel({ item, onClose }: { item: Item; onClose: () => void }) {
         </div>
 
         <div className="p-6 space-y-6">
+
+          {isNonModular && (
+            <div className="flex items-start gap-3 bg-red-50 border-2 border-red-400 rounded-2xl px-5 py-4">
+              <AlertTriangle size={22} className="text-red-600 mt-0.5 shrink-0" />
+              <div>
+                <p className="text-red-700 font-bold text-base leading-snug">NENÍ MODULÁRNÍ</p>
+                <p className="text-red-600 text-sm mt-0.5">
+                  Tento prvek nelze přemísťovat — nutné zabetonování základů do země.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {item.modelPath && (
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <p className="text-xs uppercase tracking-widest text-text-light">3D model</p>
+                <div className="flex items-center gap-1 text-xs text-text-light">
+                  <RotateCcw size={11} />
+                  <span>táhněte pro otáčení · kolečko pro zoom</span>
+                </div>
+              </div>
+              <div className="h-64 rounded-2xl overflow-hidden bg-fg border border-btn/20">
+                <StlPreview
+                  modelPath={item.modelPath}
+                  zoom={1.1}
+                  interactive={true}
+                  className="h-full w-full"
+                />
+              </div>
+            </div>
+          )}
+
           <p className="text-text-mid leading-relaxed">{item.description}</p>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

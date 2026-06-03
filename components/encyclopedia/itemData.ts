@@ -50,6 +50,12 @@ const zastineneParkovaciMistoDimensions: ItemDimensions = {
   depth: 3,
   height: 5,
 };
+const zelenáZastavkaDimensions: ItemDimensions = {
+  width: 4.5,
+  depth: 2,
+  height: 2.5,
+};
+
 const rostlinnaBranaModelPath = encodeURI("/Rostliná brána.stl");
 const rostlinnaStenaModelPath = encodeURI("/Rostliná stěna.stl");
 const rostlinnaBranaTopImagePath = encodeURI("/Rostliná brána-top.png");
@@ -124,7 +130,30 @@ export const ITEMS: Item[] = [
       specs: {
         "Barva": "Šedo-hnědá",
       },
-    }
+    },
+    {
+      id: "4",
+      name: "Zelená zastávka",
+      emoji: "🚌",
+      description: "Ekologická autobusová zastávka, která vytvoří příjemný stín pomocí popínavého břečťanu, který roste po konstrukci.",
+      coolingEffect: 4,
+      cost: "medium",
+      priceMin: 75000,
+      priceMax: 80000,
+      maintenance: "low",
+      lifespan: "25-30 let",
+      material: "Nerezová ocel",
+      weight: "1 500 kg",
+      dimensions: formatDimensions(zelenáZastavkaDimensions),
+      modelPath: encodeURI("/Zelena_Zastavka.glb"),
+      topDownImagePath: encodeURI("/Zelena_Zastavka-top.png"),
+      dimensionsM: zelenáZastavkaDimensions,
+      waterFrequency: "1x za 2 týdny (bez srážek)",
+      tags: ["autobus", "zastávka", "nemodulární"],
+      specs: {
+        "Instalace": "Nutné zabetonování základů do země",
+      },
+    },
 ];
 
 export const COST_LABEL: Record<string, string> = { low: "Nízké", medium: "Střední", high: "Vysoké" };
