@@ -615,11 +615,11 @@ function PropertiesPanel({ item, selectedCount, onChange, onCommit, onDelete }: 
       <div style={{ marginBottom: 10 }}>
         <div style={{ fontSize: 10, letterSpacing: "0.08em", textTransform: "uppercase", color: "#2e3a1f77", marginBottom: 4 }}>Rotace (°)</div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <input type="range" min={0} max={360} value={item.rotation || 0}
+          <input type="range" min={0} max={360} value={Math.round(item.rotation || 0)}
             onChange={e => onChange({ ...item, rotation: Number(e.target.value) })}
             onMouseUp={e => onCommit({ ...item, rotation: Number((e.target as HTMLInputElement).value) })}
             style={{ flex: 1, accentColor: "#2e3a1f" }} />
-          <span style={{ fontSize: 11, color: "#2e3a1f", width: 32, textAlign: "right" }}>{item.rotation || 0}°</span>
+          <span style={{ fontSize: 11, color: "#2e3a1f", width: 32, textAlign: "right" }}>{Math.round(item.rotation || 0)}°</span>
         </div>
       </div>
       <div style={{ marginBottom: 10 }}>
@@ -875,11 +875,11 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
     setSatTilesVersion(v => v + 1);
 
     const { north, south, east, west } = area.bounds;
-    let zoom = 18;
-    for (let z = 18; z >= 12; z--) {
+    let zoom = 19;
+    for (let z = 19; z >= 12; z--) {
       const count = (Math.abs(lngToTileX(east, z) - lngToTileX(west, z)) + 1)
                   * (Math.abs(latToTileY(south, z) - latToTileY(north, z)) + 1);
-      if (count <= 36) { zoom = z; break; }
+      if (count <= 64) { zoom = z; break; }
     }
     const x0 = Math.min(lngToTileX(west, zoom), lngToTileX(east, zoom));
     const x1 = Math.max(lngToTileX(west, zoom), lngToTileX(east, zoom));
@@ -967,7 +967,13 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
     const labelColor    = isSat ? "#f1f6e0bb" : "#2e3a1f55";
     const scaleColor    = isSat ? "#f1f6e0d0" : "#2e3a1f88";
 
-    ctx.clearRect(0, 0, w, h);
+    // Backing store may be larger than the CSS box for crisp output on
+    // high-DPI screens. Work in CSS pixels by scaling the base transform.
+    const renderScale = w > 0 ? ctx.canvas.width / w : 1;
+    ctx.imageSmoothingQuality = "high";
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+    ctx.setTransform(renderScale, 0, 0, renderScale, 0, 0);
     ctx.fillStyle = bgFill;
     ctx.fillRect(0, 0, w, h);
 
@@ -991,7 +997,11 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
 
     ctx.save();
     const cos = Math.cos(angle), sin = Math.sin(angle);
-    ctx.setTransform(zoom * cos, zoom * sin, -zoom * sin, zoom * cos, vpX, vpY);
+    ctx.setTransform(
+      zoom * cos * renderScale, zoom * sin * renderScale,
+      -zoom * sin * renderScale, zoom * cos * renderScale,
+      vpX * renderScale, vpY * renderScale
+    );
 
     const { project, pixelsPerMetre } = makeProjection(area.points, w, h, 80);
     pixelsPerMetreRef.current = pixelsPerMetre;
@@ -1020,7 +1030,7 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
       worldPts.forEach(([px, py]) => ctx.lineTo(px, py));
       ctx.closePath();
       ctx.clip();
-      ctx.globalAlpha = 0.95;
+      ctx.globalAlpha = 1;
       satelliteTilesRef.current.forEach(tile => {
         const nw = project([tileYToLat(tile.y, tile.z), tileXToLng(tile.x, tile.z)]);
         const se = project([tileYToLat(tile.y + 1, tile.z), tileXToLng(tile.x + 1, tile.z)]);
@@ -1248,7 +1258,9 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
           };
         }
 
-        canvas.width = width; canvas.height = height;
+        const dpr = Math.min(window.devicePixelRatio || 1, 3);
+        canvas.width = Math.round(width * dpr);
+        canvas.height = Math.round(height * dpr);
         canvasSize.current = { w: width, h: height };
         if (!vpInitialised.current) {
           fitParcel();
@@ -1520,7 +1532,7 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
       const el = elementsRef.current.find(i => i.id === id);
       if (!el) { stopRotateDrag(); return; }
       const [cx, cy] = worldToScreen(el.x + el.wPx / 2, el.y + el.hPx / 2);
-      const newRotation = normalizeDeg(pointerAngleDeg(cx, cy, sx, sy) - angleOffsetDeg);
+      const newRotation = Math.round(normalizeDeg(pointerAngleDeg(cx, cy, sx, sy) - angleOffsetDeg)) % 360;
       const newEls = elementsRef.current.map(i => i.id === id ? { ...i, rotation: newRotation } : i);
       pendingInteractiveRef.current = newEls;
       setElements(newEls);
@@ -1719,7 +1731,7 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
       const el = elementsRef.current.find(i => i.id === id);
       if (!el) { stopRotateDrag(); return; }
       const [cx, cy] = worldToScreen(el.x + el.wPx / 2, el.y + el.hPx / 2);
-      const newRotation = normalizeDeg(pointerAngleDeg(cx, cy, sx, sy) - angleOffsetDeg);
+      const newRotation = Math.round(normalizeDeg(pointerAngleDeg(cx, cy, sx, sy) - angleOffsetDeg)) % 360;
       const newEls = elementsRef.current.map(i => i.id === id ? { ...i, rotation: newRotation } : i);
       pendingInteractiveRef.current = newEls;
       setElements(newEls);
