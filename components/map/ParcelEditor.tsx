@@ -280,31 +280,12 @@ function drawShape(
   const radius = Math.min(3, hw * 0.25, hh * 0.25);
 
   if (topDownImage && shape !== "circle" && shape !== "ellipse") {
-    // Shadow/glow via opaque fill drawn first
-    if (selected || hovered) {
-      ctx.shadowColor = selected ? "#2e3a1f88" : "#2e3a1f33";
-      ctx.shadowBlur = selected ? 12 : 6;
-    }
-    ctx.fillStyle = "#cccccc";
-    ctx.beginPath();
-    (ctx as any).roundRect(-hw, -hh, w, h, radius);
-    ctx.fill();
-    ctx.shadowBlur = 0;
-
-    // Draw image clipped to rounded rect
     ctx.save();
     ctx.beginPath();
     (ctx as any).roundRect(-hw, -hh, w, h, radius);
     ctx.clip();
     ctx.drawImage(topDownImage, -hw, -hh, w, h);
     ctx.restore();
-
-    // Border
-    ctx.strokeStyle = selected ? "#2e3a1f" : "#2e3a1f66";
-    ctx.lineWidth = selected ? 2 : 1;
-    ctx.beginPath();
-    (ctx as any).roundRect(-hw, -hh, w, h, radius);
-    ctx.stroke();
   } else {
     if (selected || hovered) {
       ctx.shadowColor = selected ? "#2e3a1f88" : "#2e3a1f33";
@@ -359,13 +340,11 @@ function drawShape(
   }
 
   if (selected) {
-    const sp = 2 / zoom;
+    const sp = 3 / zoom;
     const tick = 4 / zoom, ox = hw + sp * 2, oy = hh + sp * 2;
     ctx.shadowBlur = 0;
     ctx.strokeStyle = "#2e3a1f";
-    ctx.lineWidth = 2.5 / zoom; ctx.setLineDash([]);
-    ctx.strokeRect(-hw - sp, -hh - sp, w + sp * 2, h + sp * 2);
-    ctx.lineWidth = 2 / zoom;
+    ctx.lineWidth = 0.5 / zoom;
     ctx.beginPath();
     ctx.moveTo(-ox, -oy + tick); ctx.lineTo(-ox, -oy); ctx.lineTo(-ox + tick, -oy);
     ctx.moveTo(ox - tick, -oy); ctx.lineTo(ox, -oy); ctx.lineTo(ox, -oy + tick);
@@ -396,13 +375,8 @@ function ItemTooltip({ item }: { item: Item }) {
       borderRadius: 6, boxShadow: "0 4px 20px #2e3a1f22", padding: "14px 16px",
       maxHeight: "calc(100vh - 16px)", overflowY: "auto",
     }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
-        <div style={{ width: 36, height: 36, borderRadius: 6, background: "#4A7C5922", border: "1.5px solid #4A7C5966", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, flexShrink: 0 }}>
-          {item.emoji}
-        </div>
-        <div>
-          <div style={{ fontSize: 13, color: "#2e3a1f", fontStyle: "italic", marginBottom: 2 }}>{item.name}</div>
-        </div>
+      <div style={{ marginBottom: 10 }}>
+        <div style={{ fontSize: 13, color: "#2e3a1f", fontStyle: "italic", marginBottom: 2 }}>{item.name}</div>
       </div>
 
       {item.modelPath && (
@@ -544,8 +518,10 @@ function CatalogItem({ item, onDragStart }: { item: any; onDragStart: (e: React.
           background: hovered ? "#2e3a1f08" : "transparent",
         }}
       >
-        <div style={{ width: 36, height: 36, borderRadius: 4, background: item.color + "33", border: `1.5px solid ${item.color}66`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>
-          {item.icon}
+        <div style={{ width: 36, height: 36, borderRadius: 4, border: `1.5px solid ${item.color}66`, overflow: "hidden", background: item.color + "33", flexShrink: 0 }}>
+          {item.itemRef?.previewImagePath
+            ? <img src={item.itemRef.previewImagePath} alt={item.label} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            : null}
         </div>
         <span style={{ fontSize: 9, letterSpacing: "0.06em", textTransform: "uppercase", color: "#2e3a1f88", textAlign: "center", lineHeight: 1.2, maxWidth: 52, fontFamily: "inherit" }}>
           {item.label}
@@ -1163,16 +1139,16 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
       if (selEl) {
         const cx = selEl.x + selEl.wPx / 2, cy = selEl.y + selEl.hPx / 2;
         const theta = ((selEl.rotation || 0) * Math.PI) / 180;
-        const orbitDist = selEl.hPx / 2 + 28;
+        const orbitDist = selEl.hPx / 2 + 20 / zoom;
         const [hx, hy] = worldToScreen(cx + Math.sin(theta) * orbitDist, cy - Math.cos(theta) * orbitDist);
         const hr = 12;
         rotateHandleRef.current = { id: selId, x: hx, y: hy, radius: hr };
-        const [cxs, cys] = worldToScreen(cx, cy);
+        const [lx, ly] = worldToScreen(cx + Math.sin(theta) * (selEl.hPx / 2), cy - Math.cos(theta) * (selEl.hPx / 2));
         ctx.save();
         ctx.strokeStyle = "#2e3a1f66";
         ctx.lineWidth = 1.2;
         ctx.beginPath();
-        ctx.moveTo(cxs, cys);
+        ctx.moveTo(lx, ly);
         ctx.lineTo(hx, hy);
         ctx.stroke();
         ctx.beginPath();

@@ -29,6 +29,7 @@ export interface Item {
   dimensions: string;
   modelPath?: string;
   topDownImagePath?: string;
+  previewImagePath?: string;
   dimensionsM?: ItemDimensions;
   waterFrequency?: string;
   tags: string[];
@@ -65,7 +66,7 @@ export const ITEMS: Item[] = [
   {
     id: "1",
     name: "Rostlinná brána",
-    emoji: "🪴",
+    emoji: "",
     description: "Rostlinná brána, která vytvoří velkou zastíněnou plochu.",
     coolingEffect: 6, 
     cost: "high",
@@ -78,6 +79,7 @@ export const ITEMS: Item[] = [
     dimensions: formatDimensions(rostlinnaBranaDimensions),
     modelPath: rostlinnaBranaModelPath,
     topDownImagePath: rostlinnaBranaTopImagePath,
+    previewImagePath: encodeURI("/Rostliná brána-preview.png"),
     dimensionsM: rostlinnaBranaDimensions,
     waterFrequency: "1x měsíčně (bez srážek)",
     tags: ["modulární", "brána", "venkovní"],
@@ -88,7 +90,7 @@ export const ITEMS: Item[] = [
     {
     id: "2",
     name: "Rostlinná stěna",
-    emoji: "🪴",
+    emoji: "",
     description: "Rostlinná stěna, která vytvoří příjemné zastíněné prostředí.",
     coolingEffect: 6, 
     cost: "medium",
@@ -101,6 +103,7 @@ export const ITEMS: Item[] = [
     dimensions: formatDimensions(rostlinnaStenaDimensions),
     modelPath: rostlinnaStenaModelPath,
     topDownImagePath: rostlinnaStenaTopImagePath,
+    previewImagePath: encodeURI("/Rostliná stěna-preview.png"),
     dimensionsM: rostlinnaStenaDimensions,
     waterFrequency: "1x měsíčně (bez srážek)",
     tags: ["modulární", "stěna", "venkovní"],
@@ -111,7 +114,7 @@ export const ITEMS: Item[] = [
     {
       id: "3",
       name: "Zastíněné parkovací místo",
-      emoji: "🚗",
+      emoji: "",
       description: "Zastíněné parkovací místo, které poskytuje stín a komfort pro uživatele.",
       coolingEffect: 4,
       cost: "medium",
@@ -124,7 +127,8 @@ export const ITEMS: Item[] = [
       dimensions: "2 x 3 x 5 m",
       modelPath: encodeURI("/P.stl"),
       topDownImagePath: encodeURI("/P-top.png"),
-      dimensionsM: { width: 3, depth: 6 },
+      previewImagePath: "/P-preview.png",
+      dimensionsM: zastineneParkovaciMistoDimensions,
       waterFrequency: "1x za 2 týdny (bez srážek)",
       tags: ["modulární", "parkování", "venkovní"],
       specs: {
@@ -134,7 +138,7 @@ export const ITEMS: Item[] = [
     {
       id: "4",
       name: "Zelená zastávka",
-      emoji: "🚌",
+      emoji: "",
       description: "Ekologická autobusová zastávka, která vytvoří příjemný stín pomocí popínavého břečťanu, který roste po konstrukci.",
       coolingEffect: 4,
       cost: "medium",
@@ -147,6 +151,7 @@ export const ITEMS: Item[] = [
       dimensions: formatDimensions(zelenáZastavkaDimensions),
       modelPath: encodeURI("/Zelena_Zastavka.glb"),
       topDownImagePath: encodeURI("/Zelena_Zastavka-top.png"),
+      previewImagePath: "/Zelena_Zastavka-preview.png",
       dimensionsM: zelenáZastavkaDimensions,
       waterFrequency: "1x za 2 týdny (bez srážek)",
       tags: ["autobus", "zastávka", "nemodulární"],

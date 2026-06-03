@@ -248,7 +248,6 @@ function ItemCard({ item, onClick }: { item: Item; onClick: () => void }) {
       className="w-full text-left bg-bg border border-btn/30 rounded-2xl p-5 hover:border-btn hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 group"
     >
       <div className="flex items-start gap-3 mb-3">
-        <span className="text-3xl leading-none">{item.emoji}</span>
         <div className="min-w-0 flex-1">
           <h3 className="font-display text-lg text-text leading-tight group-hover:text-btn-dark transition-colors">
             {item.name}
@@ -296,7 +295,6 @@ function DetailPanel({ item, onClose }: { item: Item; onClose: () => void }) {
 
       <div className="relative bg-bg rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
         <div className="sticky top-0 bg-bg/95 backdrop-blur-md border-b border-btn/20 px-6 py-4 flex items-center gap-3 rounded-t-3xl">
-          <span className="text-4xl">{item.emoji}</span>
           <div className="flex-1 min-w-0">
             <h2 className="font-display text-2xl text-text leading-tight">{item.name}</h2>
           </div>
