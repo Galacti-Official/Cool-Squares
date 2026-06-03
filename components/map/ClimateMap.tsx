@@ -382,6 +382,37 @@ function buildContinuousOverlay(
   );
 }
 
+export async function addClimateLayersToMap(
+  L: any,
+  map: any,
+  pane = "overlayPane",
+): Promise<any[]> {
+  const layers: any[] = [];
+
+  const samples = await fetchClimateSamples(CZECH_BOUNDS, CZECH_GRID_SIZE, 0);
+  const temps = samples.map(s => s.temperature);
+  const min = Math.min(...temps);
+  const max = Math.max(...temps);
+
+  const smoothOverlay = buildContinuousOverlay(L, samples, CZECH_BOUNDS, CZECH_GRID_SIZE, min, max);
+  if (smoothOverlay) {
+    smoothOverlay.options.pane = pane;
+    smoothOverlay.addTo(map);
+    layers.push(smoothOverlay);
+  }
+
+  for (const city of CITY_THERMAL_OVERLAYS) {
+    const { north, south, east, west } = city.bounds;
+    const imgUrl = buildArcGISExportUrl(city.serviceUrl, city.bounds);
+    const cityLayer = L.imageOverlay(imgUrl, [[south, west], [north, east]], {
+      opacity: 0.85, interactive: false, pane,
+    }).addTo(map);
+    layers.push(cityLayer);
+  }
+
+  return layers;
+}
+
 export default function ClimateMap({
   area,
   height = 280,

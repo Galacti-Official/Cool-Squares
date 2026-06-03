@@ -1,11 +1,7 @@
 #!/usr/bin/env node
-// Renders public/*.stl and public/*.glb files as top-down PNGs (pure Node.js, no deps).
-// Run: node scripts/stl-topdown.js
 const fs = require("fs");
 const path = require("path");
 const zlib = require("zlib");
-
-// ── STL parser ───────────────────────────────────────────────────────────────
 
 function parseSTL(buffer) {
   const numTri = buffer.readUInt32LE(80);
@@ -43,8 +39,6 @@ function parseASCIISTL(text) {
     tris.push({ normal: [+m[1],+m[2],+m[3]], v: [[+m[4],+m[5],+m[6]],[+m[7],+m[8],+m[9]],[+m[10],+m[11],+m[12]]] });
   return tris;
 }
-
-// ── GLB parser (with DRACO support) ─────────────────────────────────────────
 
 function readGLBChunks(buffer) {
   if (buffer.readUInt32LE(0) !== 0x46546C67) throw new Error("Not a GLB file");
@@ -155,15 +149,9 @@ async function parseGLB(buffer) {
   return tris;
 }
 
-// ── Axis mapping ─────────────────────────────────────────────────────────────
-
-// STL models (Z-up, depth=X, width=Y):  swap X↔Y so width is horizontal.
 function stlAxes(v)  { return [v[1], v[0], v[2]]; }
 
-// GLB model (Z-up):  project onto XY plane (top-down = look down -Z).
 function glbAxes(v)  { return [v[0], v[1], v[2]]; }
-
-// ── Renderer ─────────────────────────────────────────────────────────────────
 
 function renderTopDown(triangles, toScreen) {
   let minX=Infinity, maxX=-Infinity, minY=Infinity, maxY=-Infinity, minZ=Infinity, maxZ=-Infinity;
@@ -175,7 +163,6 @@ function renderTopDown(triangles, toScreen) {
   }
   const rangeZ = maxZ - minZ || 1;
 
-  // Output size: long side = 1024px, aspect ratio from bounding box
   const spanX = (maxX-minX) || 1, spanY = (maxY-minY) || 1;
   const pad = 0.06;
   const pMinX = minX - spanX*pad, pMaxX = maxX + spanX*pad;
@@ -244,8 +231,6 @@ function normalizeVec(x, y, z) {
   return [x/len, y/len, z/len];
 }
 
-// ── PNG writer ───────────────────────────────────────────────────────────────
-
 function writePNG(pixels, w, h, outPath) {
   const raw = Buffer.alloc((w*3+1)*h);
   for (let y=0; y<h; y++) {
@@ -282,8 +267,6 @@ function crc32(buf) {
   for(let i=0;i<buf.length;i++) c=CRC_TABLE[(c^buf[i])&0xff]^(c>>>8);
   return (c^0xffffffff)>>>0;
 }
-
-// ── Main ─────────────────────────────────────────────────────────────────────
 
 (async () => {
   const publicDir = path.join(__dirname, "..", "public");

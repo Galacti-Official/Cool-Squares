@@ -3,7 +3,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import ParcelEditor, { type GeoElement } from "./ParcelEditor";
 import { formatAreaByMagnitude, formatDistanceByMagnitude } from "./areaFormat";
-import ClimateMap from "./ClimateMap";
+import ClimateMap, { addClimateLayersToMap } from "./ClimateMap";
 import Image from "next/image";
 import { ArrowLeft, LayoutGrid, Thermometer, X, Pencil, type LucideIcon } from "lucide-react";
 
@@ -560,16 +560,19 @@ const MapView = forwardRef<{ startNewDrawing: () => void }, { onAreaSelected: (a
     const LIGHT_TILES = "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png";
     const SATELLITE_TILES = "https://mt1.google.com/vt/lyrs=s&x={x}&y={y}&z={z}";
 
+
     const mapRef = useRef<HTMLDivElement>(null);
     const leafletMapRef = useRef<any>(null);
     const czGeoJsonRef = useRef<any>(null);
     const bgLayerRef = useRef<any>(null);
     const clipLayerRef = useRef<any>(null);
     const [mapReady, setMapReady] = useState(false);
-    const [mapStyle, setMapStyle] = useState<"light" | "satellite">("light");
+    const [mapStyle, setMapStyle] = useState<"light" | "satellite" | "heat">("light");
     const [mode, setMode] = useState<Mode>("idle");
     const [pointCount, setPointCount] = useState(0);
     const [invalidMsg, setInvalidMsg] = useState<string | null>(null);
+
+    const heatLayersRef = useRef<any[]>([]);
 
     const pointsRef = useRef<[number, number][]>([]);
     const tempMarkersRef = useRef<any[]>([]);
@@ -718,12 +721,28 @@ const MapView = forwardRef<{ startNewDrawing: () => void }, { onAreaSelected: (a
     useEffect(() => {
       const bgLayer = bgLayerRef.current;
       const clipLayer = clipLayerRef.current;
-      if (!bgLayer || !clipLayer) return;
-      const isSatellite = mapStyle === "satellite";
-      const tileUrl = isSatellite ? SATELLITE_TILES : LIGHT_TILES;
-      bgLayer.setUrl(tileUrl);
-      clipLayer.setUrl(tileUrl);
-      bgLayer.setOpacity(isSatellite ? 0.28 : 0.15);
+      const map = leafletMapRef.current;
+      const L = (window as any).L;
+      if (!bgLayer || !clipLayer || !map || !L) return;
+
+      if (mapStyle === "heat") {
+        bgLayer.setUrl(LIGHT_TILES);
+        clipLayer.setUrl(LIGHT_TILES);
+        bgLayer.setOpacity(0.15);
+        if (heatLayersRef.current.length === 0) {
+          addClimateLayersToMap(L, map, "czPane").then(layers => {
+            heatLayersRef.current = layers;
+          }).catch(console.error);
+        }
+      } else {
+        heatLayersRef.current.forEach(l => map.removeLayer(l));
+        heatLayersRef.current = [];
+        const isSatellite = mapStyle === "satellite";
+        const tileUrl = isSatellite ? SATELLITE_TILES : LIGHT_TILES;
+        bgLayer.setUrl(tileUrl);
+        clipLayer.setUrl(tileUrl);
+        bgLayer.setOpacity(isSatellite ? 0.28 : 0.15);
+      }
     }, [mapStyle]);
 
     function flashInvalid(msg: string) {
@@ -830,6 +849,7 @@ const MapView = forwardRef<{ startNewDrawing: () => void }, { onAreaSelected: (a
           <div className="absolute top-5 left-5 z-[1000] bg-bg/95 backdrop-blur-md border border-btn/40 rounded-2xl p-1.5 flex items-center gap-1 shadow-lg">
             <button onClick={() => setMapStyle("light")} className={`px-3 py-1.5 rounded-xl text-xs tracking-wide transition-all ${mapStyle === "light" ? "bg-text text-bg" : "text-text-mid hover:bg-bg/70"}`}>Mapa</button>
             <button onClick={() => setMapStyle("satellite")} className={`px-3 py-1.5 rounded-xl text-xs tracking-wide transition-all ${mapStyle === "satellite" ? "bg-text text-bg" : "text-text-mid hover:bg-bg/70"}`}>Satelit</button>
+            <button onClick={() => setMapStyle("heat")} className={`px-3 py-1.5 rounded-xl text-xs tracking-wide transition-all ${mapStyle === "heat" ? "bg-text text-bg" : "text-text-mid hover:bg-bg/70"}`}>Teplo</button>
           </div>
         )}
 
