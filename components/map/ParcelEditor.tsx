@@ -660,7 +660,7 @@ function PlanSummaryBar({ stats, expanded, onToggle, area }: {
         </div>
         <div style={{ width: 1, height: 20, background: "#2e3a1f22", margin: "0 20px" }} />
         <div style={{ display: "flex", alignItems: "baseline", gap: 6, minWidth: 160 }}>
-          <span style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "#2e3a1f77" }}>Ochlazení</span>
+          <span style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "#2e3a1f77" }}>Přibližné Ochlazení</span>
           <span style={{ fontSize: 14, color: tempColor, fontStyle: "italic" }}>{hasElements ? tempLabel : "—"}</span>
         </div>
         <div style={{ width: 1, height: 20, background: "#2e3a1f22", margin: "0 20px" }} />
@@ -2162,7 +2162,7 @@ export default function ParcelEditor({ areas, onBack, initialPlan }: { areas: Se
                   <div style={{ fontSize: 14, fontStyle: "italic", color: "#2e3a1f" }}>{planStats ? `${formatCZK(planStats.totalMin)} – ${formatCZK(planStats.totalMax)}` : "—"}</div>
                 </div>
                 <div style={{ width: 110, flexShrink: 0, padding: "12px 14px", borderRadius: 10, background: "#2e3a1f08", border: "1.5px solid #2e3a1f12" }}>
-                  <div style={{ fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", color: "#2e3a1f66", marginBottom: 4 }}>Ochlazení</div>
+                  <div style={{ fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", color: "#2e3a1f66", marginBottom: 4 }}>Přibližné ochlazení</div>
                   <div style={{ fontSize: 14, fontStyle: "italic", color: tempColor }}>{tempLabel}</div>
                 </div>
               </div>
