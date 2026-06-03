@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { ITEMS, CATEGORIES, type Item, type Category } from "./itemData";
-import { Search } from 'lucide-react';
+import { Search, ChevronDown, X } from 'lucide-react';
 
 const COST_COLOR: Record<string, string> = {
   low: "bg-emerald-100 text-emerald-700",
@@ -151,6 +151,65 @@ function getSortComparator(sortBy: "name" | "cooling" | "cost"): (a: Item, b: It
 
 const ITEM_SEARCH_INDEX = ITEMS.map(buildSearchIndex);
 
+const SORT_OPTIONS = [
+  { value: "name", label: "Řazení: A–Z" },
+  { value: "cooling", label: "Nejlepší ochlazení" },
+  { value: "cost", label: "Nejnižší cena" },
+] as const;
+
+function SortDropdown({
+  value,
+  onChange,
+}: {
+  value: "name" | "cooling" | "cost";
+  onChange: (v: "name" | "cooling" | "cost") => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const selected = SORT_OPTIONS.find((o) => o.value === value)!;
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        onClick={() => setOpen((o) => !o)}
+        className="flex items-center gap-2 bg-bg border border-btn/40 rounded-full px-4 py-2.5 text-sm text-text hover:border-btn hover:shadow-sm transition-all focus:outline-none focus:border-btn focus:ring-2 focus:ring-btn/20 whitespace-nowrap"
+      >
+        {selected.label}
+        <ChevronDown
+          size={14}
+          className={`text-text-light transition-transform duration-200 ${open ? "rotate-180" : ""}`}
+        />
+      </button>
+
+      {open && (
+        <div className="absolute right-0 mt-2 w-52 bg-bg border border-btn/30 rounded-2xl shadow-lg overflow-hidden z-20">
+          {SORT_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => { onChange(opt.value); setOpen(false); }}
+              className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${
+                opt.value === value
+                  ? "bg-text text-bg font-medium"
+                  : "text-text hover:bg-btn/15"
+              }`}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function formatCZK(value: number): string {
   return `${value.toLocaleString("cs-CZ")} Kč`;
 }
@@ -242,9 +301,9 @@ function DetailPanel({ item, onClose }: { item: Item; onClose: () => void }) {
           </div>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-fg border border-btn/30 flex items-center justify-center text-text-mid hover:bg-btn/30 transition-colors text-sm"
+            className="w-8 h-8 rounded-full flex items-center justify-center text-text-mid hover:text-text transition-colors"
           >
-            ✕
+            <X size={20} />
           </button>
         </div>
 
@@ -396,15 +455,7 @@ export default function EncyclopediaView() {
             />
           </div>
 
-          <select
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
-            className="bg-bg border border-btn/40 rounded-full px-4 py-2.5 text-sm text-text focus:outline-none focus:border-btn cursor-pointer"
-          >
-            <option value="name">Řazení: A–Z</option>
-            <option value="cooling">Řazení: Nejlepší ochlazení</option>
-            <option value="cost">Řazení: Nejnižší cena</option>
-          </select>
+          <SortDropdown value={sortBy} onChange={setSortBy} />
         </div>
 
         <div className="flex flex-wrap gap-2 mb-8">
