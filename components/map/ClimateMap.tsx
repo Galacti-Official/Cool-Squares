@@ -328,7 +328,7 @@ function parseHslColor(hsl: string): [number, number, number] {
   ];
 }
 
-function buildContinuousOverlay(
+function buildCanvasTileLayer(
   L: any,
   samples: ClimateSample[],
   bounds: ClimateArea["bounds"],
@@ -340,6 +340,7 @@ function buildContinuousOverlay(
   const expected = gridSize * gridSize;
   if (samples.length !== expected) return null;
 
+<<<<<<< Updated upstream
   const width = 512;
   const height = 512;
   const canvas = document.createElement("canvas");
@@ -348,6 +349,8 @@ function buildContinuousOverlay(
   const ctx = canvas.getContext("2d");
   if (!ctx) return null;
 
+=======
+>>>>>>> Stashed changes
   const seaLevelTemps2d: number[][] = [];
   const elevations2d: number[][] = [];
   for (let y = 0; y < gridSize; y++) {
@@ -356,34 +359,43 @@ function buildContinuousOverlay(
     elevations2d.push(row.map((s) => s.elevation));
   }
 
+<<<<<<< Updated upstream
   const imageData = ctx.createImageData(width, height);
   const data = imageData.data;
   // HSL(hue, 72%, 52%) constants — s=0.72, l=0.52
   const C = 0.6912; // (1 - |2l-1|) * s
   const M = 0.1744; // l - C/2
   const safeSpan = Math.max(maxTemp - minTemp, 0.001);
+=======
+  const ClimateTileLayer = L.GridLayer.extend({
+    createTile(coords: any, done: (err: any, tile: HTMLCanvasElement) => void) {
+      const tile = document.createElement("canvas");
+      const size = this.getTileSize();
+      tile.width = size.x;
+      tile.height = size.y;
+      const ctx = tile.getContext("2d");
+      if (!ctx) { done(null, tile); return tile; }
+>>>>>>> Stashed changes
 
-  for (let py = 0; py < height; py++) {
-    const gy = (py / (height - 1)) * (gridSize - 1);
-    const y0 = Math.floor(gy);
-    const y1 = Math.min(gridSize - 1, y0 + 1);
-    const fy = gy - y0;
-    for (let px = 0; px < width; px++) {
-      const gx = (px / (width - 1)) * (gridSize - 1);
-      const x0 = Math.floor(gx);
-      const x1 = Math.min(gridSize - 1, x0 + 1);
-      const fx = gx - x0;
+      const tileBounds = this._tileCoordsToBounds(coords);
+      const tileNorth = tileBounds.getNorth();
+      const tileSouth = tileBounds.getSouth();
+      const tileWest = tileBounds.getWest();
+      const tileEast = tileBounds.getEast();
 
-      const sl00 = seaLevelTemps2d[y0][x0]; const sl10 = seaLevelTemps2d[y0][x1];
-      const sl01 = seaLevelTemps2d[y1][x0]; const sl11 = seaLevelTemps2d[y1][x1];
-      const seaLevelTemp = sl00 + (sl10 - sl00) * fx + (sl01 - sl00) * fy + (sl11 - sl10 - sl01 + sl00) * fx * fy;
+      const imageData = ctx.createImageData(size.x, size.y);
+      const data = imageData.data;
 
-      const e00 = elevations2d[y0][x0]; const e10 = elevations2d[y0][x1];
-      const e01 = elevations2d[y1][x0]; const e11 = elevations2d[y1][x1];
-      const elev = e00 + (e10 - e00) * fx + (e01 - e00) * fy + (e11 - e10 - e01 + e00) * fx * fy;
+      for (let py = 0; py < size.y; py++) {
+        const lat = tileNorth + (tileSouth - tileNorth) * (py / (size.y - 1));
+        const gy = ((lat - bounds.south) / (bounds.north - bounds.south)) * (gridSize - 1);
 
-      const temp = seaLevelTemp - elev * LAPSE_RATE;
+        for (let px = 0; px < size.x; px++) {
+          const lng = tileWest + (tileEast - tileWest) * (px / (size.x - 1));
+          const gx = ((lng - bounds.west) / (bounds.east - bounds.west)) * (gridSize - 1);
+          const idx = (py * size.x + px) * 4;
 
+<<<<<<< Updated upstream
       const t = Math.min(1, Math.max(0, (temp - minTemp) / safeSpan));
       const hue = 210 - t * 180;
       const X = C * (1 - Math.abs(((hue / 60) % 2) - 1));
@@ -401,13 +413,44 @@ function buildContinuousOverlay(
       data[idx + 3] = 150;
     }
   }
+=======
+          if (gy < 0 || gy > gridSize - 1 || gx < 0 || gx > gridSize - 1) {
+            data[idx + 3] = 0;
+            continue;
+          }
+>>>>>>> Stashed changes
 
-  ctx.putImageData(imageData, 0, 0);
-  return L.imageOverlay(
-    canvas.toDataURL("image/png"),
-    [[bounds.south, bounds.west], [bounds.north, bounds.east]],
-    { opacity: 0.95, interactive: false }
-  );
+          const y0 = Math.min(Math.floor(gy), gridSize - 2);
+          const y1 = y0 + 1;
+          const fy = gy - y0;
+          const x0 = Math.min(Math.floor(gx), gridSize - 2);
+          const x1 = x0 + 1;
+          const fx = gx - x0;
+
+          const sl00 = seaLevelTemps2d[y0][x0], sl10 = seaLevelTemps2d[y0][x1];
+          const sl01 = seaLevelTemps2d[y1][x0], sl11 = seaLevelTemps2d[y1][x1];
+          const seaLevelTemp = sl00 + (sl10 - sl00) * fx + (sl01 - sl00) * fy + (sl11 - sl10 - sl01 + sl00) * fx * fy;
+
+          const e00 = elevations2d[y0][x0], e10 = elevations2d[y0][x1];
+          const e01 = elevations2d[y1][x0], e11 = elevations2d[y1][x1];
+          const elev = e00 + (e10 - e00) * fx + (e01 - e00) * fy + (e11 - e10 - e01 + e00) * fx * fy;
+
+          const temp = seaLevelTemp - elev * LAPSE_RATE;
+          const [r, g, b] = parseHslColor(colorFromTemperature(temp, minTemp, maxTemp));
+          data[idx] = r;
+          data[idx + 1] = g;
+          data[idx + 2] = b;
+          data[idx + 3] = 150;
+        }
+      }
+
+      ctx.putImageData(imageData, 0, 0);
+      setTimeout(() => done(null, tile), 0);
+      return tile;
+    },
+  });
+
+  return new ClimateTileLayer({ opacity: 0.95, interactive: false });
 }
 
 export async function addClimateLayersToMap(
@@ -422,7 +465,7 @@ export async function addClimateLayersToMap(
   const min = Math.min(...temps);
   const max = Math.max(...temps);
 
-  const smoothOverlay = buildContinuousOverlay(L, samples, CZECH_BOUNDS, CZECH_GRID_SIZE, min, max);
+  const smoothOverlay = buildCanvasTileLayer(L, samples, CZECH_BOUNDS, CZECH_GRID_SIZE, min, max);
   if (smoothOverlay) {
     smoothOverlay.options.pane = pane;
     smoothOverlay.addTo(map);
@@ -528,7 +571,7 @@ export default function ClimateMap({
         const time = samples[0]?.time ?? "";
         setStats({ min, max, avg, time });
 
-        const smoothOverlay = buildContinuousOverlay(L, samples, climateBounds, gridSize, min, max);
+        const smoothOverlay = buildCanvasTileLayer(L, samples, climateBounds, gridSize, min, max);
         if (smoothOverlay) {
           smoothOverlay.options.pane = "climatePane";
           smoothOverlay.addTo(map);
