@@ -816,7 +816,7 @@ const MapView = forwardRef<{ startNewDrawing: () => void }, { onAreaSelected: (a
         )}
 
         {mapReady && mapStyle === "heat" && (
-          <div className="absolute bottom-8 left-5 z-[1000] bg-bg/95 backdrop-blur-md border border-btn/40 rounded-2xl px-4 py-3 shadow-lg pointer-events-none" style={{ width: 210 }}>
+          <div className="absolute bottom-24 md:bottom-8 left-5 z-[1000] bg-bg/95 backdrop-blur-md border border-btn/40 rounded-2xl px-4 py-3 shadow-lg pointer-events-none" style={{ width: 210 }}>
             <div className="text-[10px] uppercase tracking-wider text-text-mid mb-2">Povrchová teplota</div>
             <div style={{ position: "relative", height: 10, borderRadius: 5, background: "linear-gradient(to right, rgb(197,0,255) 0%, rgb(29,0,255) 16.7%, rgb(0,179,255) 33.3%, rgb(98,255,26) 50%, rgb(255,255,0) 66.7%, rgb(255,127,0) 83.3%, rgb(255,4,0) 100%)" }}>
               <div style={{ position: "absolute", left: "48.8%", top: -2, bottom: -2, width: 1, background: "#2e3a1f" }} />
