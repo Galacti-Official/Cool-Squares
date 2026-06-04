@@ -3,7 +3,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import ParcelEditor from "./ParcelEditor";
 import { formatAreaByMagnitude, formatDistanceByMagnitude } from "./areaFormat";
-import ClimateMap, { addClimateLayersToMap } from "./ClimateMap";
+import ClimateMap, { addClimateLayersToMap, LST_DATE } from "./ClimateMap";
 import Image from "next/image";
 import { ArrowLeft, LayoutGrid, Thermometer, X, Pencil, type LucideIcon } from "lucide-react";
 import type { GeoElement, SelectedArea } from "@/lib/types";
@@ -611,6 +611,9 @@ const MapView = forwardRef<{ startNewDrawing: () => void }, { onAreaSelected: (a
         if (cancelled) return;
 
         map.createPane("czPane").style.zIndex = "200";
+        const heatPane = map.createPane("heatPane");
+        heatPane.style.zIndex = "220";
+        heatPane.style.opacity = "0.85";
         map.createPane("maskPane").style.zIndex = "250";
 
         tileLayerRef.current = L.tileLayer(LIGHT_TILES, { attribution: "© OpenStreetMap contributors © CARTO", subdomains: "abcd", maxZoom: 19, pane: "czPane" }).addTo(map);
@@ -620,9 +623,7 @@ const MapView = forwardRef<{ startNewDrawing: () => void }, { onAreaSelected: (a
           map.setMaxBounds(czBounds.pad(0.2));
           map.fitBounds(czBounds, { padding: [40, 40] });
 
-          // Dim everything outside Czechia with an even-odd "world minus CZ" mask.
-          // A vector polygon follows Leaflet's own pan/zoom transforms, so it never
-          // drifts away from the tiles the way the old SVG clip-path on the pane did.
+
           const geom = czFeature.geometry;
           const polys = geom.type === "Polygon" ? [geom.coordinates] : geom.coordinates;
           const czRings: [number, number][][] = [];
@@ -693,7 +694,7 @@ const MapView = forwardRef<{ startNewDrawing: () => void }, { onAreaSelected: (a
         tileLayer.setUrl(LIGHT_TILES);
         czMask?.setStyle({ fillOpacity: 0.85 });
         if (heatLayersRef.current.length === 0) {
-          addClimateLayersToMap(L, map, "czPane").then(layers => {
+          addClimateLayersToMap(L, map, "heatPane").then(layers => {
             heatLayersRef.current = layers;
           }).catch(console.error);
         }
@@ -814,8 +815,24 @@ const MapView = forwardRef<{ startNewDrawing: () => void }, { onAreaSelected: (a
           </div>
         )}
 
+        {mapReady && mapStyle === "heat" && (
+          <div className="absolute bottom-8 left-5 z-[1000] bg-bg/95 backdrop-blur-md border border-btn/40 rounded-2xl px-4 py-3 shadow-lg pointer-events-none" style={{ width: 210 }}>
+            <div className="text-[10px] uppercase tracking-wider text-text-mid mb-2">Povrchová teplota</div>
+            <div style={{ position: "relative", height: 10, borderRadius: 5, background: "linear-gradient(to right, rgb(197,0,255) 0%, rgb(29,0,255) 16.7%, rgb(0,179,255) 33.3%, rgb(98,255,26) 50%, rgb(255,255,0) 66.7%, rgb(255,127,0) 83.3%, rgb(255,4,0) 100%)" }}>
+              <div style={{ position: "absolute", left: "48.8%", top: -2, bottom: -2, width: 1, background: "#2e3a1f" }} />
+            </div>
+            <div style={{ position: "relative", height: 13, marginTop: 3, fontSize: 9, color: "#2e3a1f99" }}>
+              <span style={{ position: "absolute", left: 0 }}>−73</span>
+              <span style={{ position: "absolute", left: "48.8%", transform: "translateX(-50%)" }}>0</span>
+              <span style={{ position: "absolute", right: 0 }}>+77 °C</span>
+            </div>
+            <div className="text-[9px] text-text-light mt-1">Satelit MODIS/Aqua (odpoledne) · {LST_DATE}</div>
+            <div className="text-[9px] text-text-light">Brno: detailní mapa (CzechGlobe, vlastní škála)</div>
+          </div>
+        )}
+
         {mapReady && (
-          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-[1000] flex items-center gap-2">
+          <div className="absolute bottom-24 md:bottom-8 left-1/2 -translate-x-1/2 z-[1000] flex items-center gap-2">
             {mode === "idle" && (
               <button onClick={startDrawing} className="flex items-center gap-2 bg-bg/95 backdrop-blur-md border border-btn/50 rounded-2xl px-5 py-3 shadow-lg hover:border-btn transition-all text-sm font-medium text-text">
                 <Pencil size={16} className="flex-shrink-0" />

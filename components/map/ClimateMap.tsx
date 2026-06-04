@@ -368,30 +368,45 @@ function buildCanvasTileLayer(
   return new ClimateTileLayer({ opacity: 0.95, interactive: false });
 }
 
+function lstDate(daysAgo: number): string {
+  const d = new Date();
+  d.setUTCDate(d.getUTCDate() - daysAgo);
+  return d.toISOString().slice(0, 10);
+}
+
+const LST_FRESHEST_DAYS = 2;
+const LST_STACK_DAYS = 8;
+
+export const LST_DATE = lstDate(LST_FRESHEST_DAYS);
+
 export async function addClimateLayersToMap(
   L: any,
   map: any,
   pane = "overlayPane",
 ): Promise<any[]> {
+  const bounds = L.latLngBounds([[48.4, 11.8], [51.2, 19.2]]);
   const layers: any[] = [];
-
-  const samples = await fetchClimateSamples(CZECH_BOUNDS, CZECH_GRID_SIZE, 0);
-  const temps = samples.map(s => s.temperature);
-  const min = Math.min(...temps);
-  const max = Math.max(...temps);
-
-  const smoothOverlay = buildCanvasTileLayer(L, samples, CZECH_BOUNDS, CZECH_GRID_SIZE, min, max);
-  if (smoothOverlay) {
-    smoothOverlay.options.pane = pane;
-    smoothOverlay.addTo(map);
-    layers.push(smoothOverlay);
+  // Add oldest first so the newest day ends up on top of the stack.
+  for (let daysAgo = LST_FRESHEST_DAYS + LST_STACK_DAYS - 1; daysAgo >= LST_FRESHEST_DAYS; daysAgo--) {
+    const url = `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Aqua_Land_Surface_Temp_Day/default/${lstDate(daysAgo)}/GoogleMapsCompatible_Level7/{z}/{y}/{x}.png`;
+    const layer = L.tileLayer(url, {
+      pane,
+      opacity: 1,
+      maxNativeZoom: 7,
+      maxZoom: 19,
+      bounds,
+      attribution: daysAgo === LST_FRESHEST_DAYS ? "Povrchová teplota: NASA EOSDIS GIBS — MODIS/Aqua LST (odpolední)" : "",
+    }).addTo(map);
+    layers.push(layer);
   }
 
   for (const city of CITY_THERMAL_OVERLAYS) {
     const { north, south, east, west } = city.bounds;
     const imgUrl = buildArcGISExportUrl(city.serviceUrl, city.bounds);
     const cityLayer = L.imageOverlay(imgUrl, [[south, west], [north, east]], {
-      opacity: 0.85, interactive: false, pane,
+      pane,
+      opacity: 1,
+      interactive: false,
     }).addTo(map);
     layers.push(cityLayer);
   }
