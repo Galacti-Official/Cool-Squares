@@ -454,7 +454,7 @@ function ResultsPage({
           ))}
         </nav>
 
-        <main className="flex-1 overflow-auto p-4 sm:p-8 md:px-10">
+        <main className="flex-1 overflow-auto p-4 sm:p-8 md:px-10" style={{ paddingBottom: "calc(1.5rem + env(safe-area-inset-bottom))" }}>
           {areas.map((a, idx) => {
             if (!mountedParcels.has(idx)) return null;
             const isActive = idx === activeParcelIdx;
@@ -804,7 +804,7 @@ const MapView = forwardRef<{ startNewDrawing: () => void }, { onAreaSelected: (a
     }, [mode]);
 
     return (
-      <div className="relative w-full" style={{ height: "calc(100vh - 64px - 57px)" }}>
+      <div className="app-shell relative w-full">
         <div ref={mapRef} className="absolute inset-0" />
 
         {mapReady && (

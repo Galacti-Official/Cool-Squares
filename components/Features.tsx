@@ -63,19 +63,18 @@ export default function Features() {
         </h2>
       </div>
 
-      <div className="relative w-[808px] mx-auto">
-        {/* Arrows */}
+      <div className="relative w-full max-w-[808px] mx-auto">
         <button
           onClick={handlePrev}
           aria-label="Předchozí"
-          className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-[calc(100%+8px)] z-20 w-10 h-10  flex items-center justify-center text-text-mid hover:text-text transition-all"
+          className="absolute left-1 sm:left-0 top-1/2 -translate-y-1/2 sm:-translate-x-[calc(100%+8px)] z-20 w-10 h-10  flex items-center justify-center text-text-mid hover:text-text transition-all"
         >
           <ChevronLeft size={20} />
         </button>
         <button
           onClick={handleNext}
           aria-label="Další"
-          className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-[calc(100%+8px)] z-20 w-10 h-10 flex items-center justify-center text-text-mid hover:text-text transition-all"
+          className="absolute right-1 sm:right-0 top-1/2 -translate-y-1/2 sm:translate-x-[calc(100%+8px)] z-20 w-10 h-10 flex items-center justify-center text-text-mid hover:text-text transition-all"
         >
           <ChevronRight size={20} />
         </button>

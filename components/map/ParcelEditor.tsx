@@ -2012,6 +2012,7 @@ export default function ParcelEditor({ areas, onBack, initialPlans }: { areas: S
       borderTopLeftRadius: 16, borderTopRightRadius: 16,
       boxShadow: "0 -8px 30px #2e3a1f22", display: "flex", flexDirection: "column",
       animation: "fadeInUp 0.22s ease",
+      paddingBottom: "env(safe-area-inset-bottom)",
     };
     const sheetHandle = (
       <div style={{ display: "flex", justifyContent: "center", paddingTop: 8, flexShrink: 0 }}>
@@ -2027,7 +2028,7 @@ export default function ParcelEditor({ areas, onBack, initialPlans }: { areas: S
       <div style={{ position: "fixed", inset: 0, zIndex: 4000, display: "flex", flexDirection: "column", background: "#F4F5E0", fontFamily: "'PT Sans', sans-serif", overflow: "hidden" }}>
 
         {/* Header */}
-        <header style={{ height: 50, flexShrink: 0, borderBottom: "1.5px solid #2e3a1f22", display: "flex", alignItems: "center", paddingRight: 4 }}>
+        <header style={{ height: "calc(50px + env(safe-area-inset-top))", paddingTop: "env(safe-area-inset-top)", flexShrink: 0, borderBottom: "1.5px solid #2e3a1f22", display: "flex", alignItems: "center", paddingRight: 4 }}>
           <button onClick={onBack} style={{ ...iconBtn, width: 48 }}><ArrowLeft size={18} /></button>
           <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", justifyContent: "center" }}>
             <span style={{ fontSize: 14, fontStyle: "italic", color: "#2e3a1f", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -2082,7 +2083,7 @@ export default function ParcelEditor({ areas, onBack, initialPlans }: { areas: S
 
         {/* Selection toolbar */}
         {selectedIds.length > 0 && mobileSheet === "none" && (
-          <div style={{ flexShrink: 0, borderTop: "1.5px solid #2e3a1f22", background: "#2e3a1f", display: "flex", alignItems: "center", height: 52, paddingLeft: 14 }}>
+          <div style={{ flexShrink: 0, borderTop: "1.5px solid #2e3a1f22", background: "#2e3a1f", display: "flex", alignItems: "center", height: "calc(52px + env(safe-area-inset-bottom))", paddingBottom: "env(safe-area-inset-bottom)", paddingLeft: 14 }}>
             <span style={{ fontSize: 12, color: "#F4F5E0cc", flex: 1, letterSpacing: "0.03em" }}>
               {selectedIds.length === 1 ? (ELEMENT_CATALOG.find(i => i.type === selectedElement?.type)?.label ?? "Prvek") : `Vybráno: ${selectedIds.length}`}
             </span>
@@ -2097,7 +2098,7 @@ export default function ParcelEditor({ areas, onBack, initialPlans }: { areas: S
 
         {/* Bottom bar */}
         {!(selectedIds.length > 0 && mobileSheet === "none") && (
-          <div style={{ flexShrink: 0, borderTop: "1.5px solid #2e3a1f22", background: "#F4F5E0", display: "flex", alignItems: "stretch", height: 60 }}>
+          <div style={{ flexShrink: 0, borderTop: "1.5px solid #2e3a1f22", background: "#F4F5E0", display: "flex", alignItems: "stretch", height: "calc(60px + env(safe-area-inset-bottom))", paddingBottom: "env(safe-area-inset-bottom)" }}>
             <button onClick={() => setMobileSheet(s => s === "summary" ? "none" : "summary")}
               style={{ flex: 1, background: "none", border: "none", borderRight: "1.5px solid #2e3a1f15", cursor: "pointer", fontFamily: "inherit", display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "flex-start", padding: "0 16px", gap: 2 }}>
               <span style={{ fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", color: "#2e3a1f77" }}>Celkem</span>

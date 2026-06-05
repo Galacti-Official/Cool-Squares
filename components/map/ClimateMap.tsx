@@ -253,121 +253,6 @@ function featureToLatLngRings(feature: any): [number, number][][] {
 }
 
 
-function colorFromTemperature(temp: number, min: number, max: number): string {
-  const safeSpan = Math.max(max - min, 0.001);
-  const t = Math.min(1, Math.max(0, (temp - min) / safeSpan));
-  const hue = 210 - t * 180;
-  return `hsl(${hue}, 72%, 52%)`;
-}
-
-function parseHslColor(hsl: string): [number, number, number] {
-  const match = /hsl\(([-\d.]+),\s*([-\d.]+)%?,\s*([-\d.]+)%?\)/i.exec(hsl);
-  if (!match) return [120, 120, 120];
-  const h = Number(match[1]);
-  const s = Number(match[2]) / 100;
-  const l = Number(match[3]) / 100;
-  const c = (1 - Math.abs(2 * l - 1)) * s;
-  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
-  const m = l - c / 2;
-  let r = 0, g = 0, b = 0;
-  if (h >= 0 && h < 60) { r = c; g = x; b = 0; }
-  else if (h < 120) { r = x; g = c; b = 0; }
-  else if (h < 180) { r = 0; g = c; b = x; }
-  else if (h < 240) { r = 0; g = x; b = c; }
-  else if (h < 300) { r = x; g = 0; b = c; }
-  else { r = c; g = 0; b = x; }
-  return [
-    Math.round((r + m) * 255),
-    Math.round((g + m) * 255),
-    Math.round((b + m) * 255),
-  ];
-}
-
-function buildCanvasTileLayer(
-  L: any,
-  samples: ClimateSample[],
-  bounds: ClimateArea["bounds"],
-  gridSize: number,
-  minTemp: number,
-  maxTemp: number
-) {
-  const LAPSE_RATE = 6.5 / 1000;
-  const expected = gridSize * gridSize;
-  if (samples.length !== expected) return null;
-
-  const seaLevelTemps2d: number[][] = [];
-  const elevations2d: number[][] = [];
-  for (let y = 0; y < gridSize; y++) {
-    const row = samples.slice(y * gridSize, (y + 1) * gridSize);
-    seaLevelTemps2d.push(row.map((s) => s.temperature + s.elevation * LAPSE_RATE));
-    elevations2d.push(row.map((s) => s.elevation));
-  }
-
-  const ClimateTileLayer = L.GridLayer.extend({
-    createTile(coords: any, done: (err: any, tile: HTMLCanvasElement) => void) {
-      const tile = document.createElement("canvas");
-      const size = this.getTileSize();
-      tile.width = size.x;
-      tile.height = size.y;
-      const ctx = tile.getContext("2d");
-      if (!ctx) { done(null, tile); return tile; }
-
-      const tileBounds = this._tileCoordsToBounds(coords);
-      const tileNorth = tileBounds.getNorth();
-      const tileSouth = tileBounds.getSouth();
-      const tileWest = tileBounds.getWest();
-      const tileEast = tileBounds.getEast();
-
-      const imageData = ctx.createImageData(size.x, size.y);
-      const data = imageData.data;
-
-      for (let py = 0; py < size.y; py++) {
-        const lat = tileNorth + (tileSouth - tileNorth) * (py / (size.y - 1));
-        const gy = ((lat - bounds.south) / (bounds.north - bounds.south)) * (gridSize - 1);
-
-        for (let px = 0; px < size.x; px++) {
-          const lng = tileWest + (tileEast - tileWest) * (px / (size.x - 1));
-          const gx = ((lng - bounds.west) / (bounds.east - bounds.west)) * (gridSize - 1);
-          const idx = (py * size.x + px) * 4;
-
-          if (gy < 0 || gy > gridSize - 1 || gx < 0 || gx > gridSize - 1) {
-            data[idx + 3] = 0;
-            continue;
-          }
-
-          const y0 = Math.min(Math.floor(gy), gridSize - 2);
-          const y1 = y0 + 1;
-          const fy = gy - y0;
-          const x0 = Math.min(Math.floor(gx), gridSize - 2);
-          const x1 = x0 + 1;
-          const fx = gx - x0;
-
-          const sl00 = seaLevelTemps2d[y0][x0], sl10 = seaLevelTemps2d[y0][x1];
-          const sl01 = seaLevelTemps2d[y1][x0], sl11 = seaLevelTemps2d[y1][x1];
-          const seaLevelTemp = sl00 + (sl10 - sl00) * fx + (sl01 - sl00) * fy + (sl11 - sl10 - sl01 + sl00) * fx * fy;
-
-          const e00 = elevations2d[y0][x0], e10 = elevations2d[y0][x1];
-          const e01 = elevations2d[y1][x0], e11 = elevations2d[y1][x1];
-          const elev = e00 + (e10 - e00) * fx + (e01 - e00) * fy + (e11 - e10 - e01 + e00) * fx * fy;
-
-          const temp = seaLevelTemp - elev * LAPSE_RATE;
-          const [r, g, b] = parseHslColor(colorFromTemperature(temp, minTemp, maxTemp));
-          data[idx] = r;
-          data[idx + 1] = g;
-          data[idx + 2] = b;
-          data[idx + 3] = 150;
-        }
-      }
-
-      ctx.putImageData(imageData, 0, 0);
-      setTimeout(() => done(null, tile), 0);
-      return tile;
-    },
-  });
-
-  return new ClimateTileLayer({ opacity: 0.95, interactive: false });
-}
-
 function lstDate(daysAgo: number): string {
   const d = new Date();
   d.setUTCDate(d.getUTCDate() - daysAgo);
@@ -379,14 +264,9 @@ const LST_STACK_DAYS = 8;
 
 export const LST_DATE = lstDate(LST_FRESHEST_DAYS);
 
-export async function addClimateLayersToMap(
-  L: any,
-  map: any,
-  pane = "overlayPane",
-): Promise<any[]> {
+function addLstTileStack(L: any, map: any, pane: string): any[] {
   const bounds = L.latLngBounds([[48.4, 11.8], [51.2, 19.2]]);
   const layers: any[] = [];
-  // Add oldest first so the newest day ends up on top of the stack.
   for (let daysAgo = LST_FRESHEST_DAYS + LST_STACK_DAYS - 1; daysAgo >= LST_FRESHEST_DAYS; daysAgo--) {
     const url = `https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Aqua_Land_Surface_Temp_Day/default/${lstDate(daysAgo)}/GoogleMapsCompatible_Level7/{z}/{y}/{x}.png`;
     const layer = L.tileLayer(url, {
@@ -399,6 +279,15 @@ export async function addClimateLayersToMap(
     }).addTo(map);
     layers.push(layer);
   }
+  return layers;
+}
+
+export async function addClimateLayersToMap(
+  L: any,
+  map: any,
+  pane = "overlayPane",
+): Promise<any[]> {
+  const layers: any[] = addLstTileStack(L, map, pane);
 
   for (const city of CITY_THERMAL_OVERLAYS) {
     const { north, south, east, west } = city.bounds;
@@ -445,6 +334,7 @@ export default function ClimateMap({
         setLoading(true);
         setError(null);
         setCitySource(null);
+        setStats(null);
         const L = await loadLeaflet();
         if (cancelled || !mapHostRef.current) return;
 
@@ -489,24 +379,10 @@ export default function ClimateMap({
           }
         }
 
-        const gridSize = mode === "czech" ? CZECH_GRID_SIZE : PARCEL_GRID_SIZE;
-        const expandRatio = mode === "czech" ? 0 : 0.3;
-        const samples = await fetchClimateSamples(climateBounds, gridSize, expandRatio);
-        if (cancelled) return;
-
-        const temps = samples.map((s) => s.temperature);
-        const min = Math.min(...temps);
-        const max = Math.max(...temps);
-        const avg = temps.reduce((sum, value) => sum + value, 0) / temps.length;
-        const time = samples[0]?.time ?? "";
-        setStats({ min, max, avg, time });
-
-        const smoothOverlay = buildCanvasTileLayer(L, samples, climateBounds, gridSize, min, max);
-        if (smoothOverlay) {
-          smoothOverlay.options.pane = "climatePane";
-          smoothOverlay.addTo(map);
-          layersRef.current.push(smoothOverlay);
-        }
+        // Surface temperature: same NASA EOSDIS GIBS MODIS/Aqua LST stack as the
+        // "Teplo" layer in MapView.
+        const lstLayers = addLstTileStack(L, map, "climatePane");
+        layersRef.current.push(...lstLayers);
 
         for (const city of CITY_THERMAL_OVERLAYS) {
           if (areaIntersectsCity(area.bounds, city.bounds)) {
@@ -586,12 +462,28 @@ export default function ClimateMap({
           map.keyboard.enable();
           if (map.tap) map.tap.enable();
         }
+
+        if (!cancelled) setLoading(false);
+
+        try {
+          const gridSize = mode === "czech" ? CZECH_GRID_SIZE : PARCEL_GRID_SIZE;
+          const expandRatio = mode === "czech" ? 0 : 0.3;
+          const samples = await fetchClimateSamples(climateBounds, gridSize, expandRatio);
+          if (cancelled) return;
+
+          const temps = samples.map((s) => s.temperature);
+          const min = Math.min(...temps);
+          const max = Math.max(...temps);
+          const avg = temps.reduce((sum, value) => sum + value, 0) / temps.length;
+          setStats({ min, max, avg, time: samples[0]?.time ?? "" });
+        } catch (statsErr) {
+          console.warn("Klimatická statistika nedostupná", statsErr);
+        }
       } catch (err) {
         if (cancelled) return;
         console.error(err);
-        setError("Nepodařilo se načíst klimatická data.");
-      } finally {
-        if (!cancelled) setLoading(false);
+        setError("Nepodařilo se načíst mapu.");
+        setLoading(false);
       }
     }
 
@@ -608,6 +500,21 @@ export default function ClimateMap({
       mapRef.current.remove();
       mapRef.current = null;
       layersRef.current = [];
+    };
+  }, []);
+
+  useEffect(() => {
+    const host = mapHostRef.current;
+    if (typeof ResizeObserver === "undefined" || !host) return;
+    let raf = 0;
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => mapRef.current?.invalidateSize());
+    });
+    observer.observe(host);
+    return () => {
+      cancelAnimationFrame(raf);
+      observer.disconnect();
     };
   }, []);
 
