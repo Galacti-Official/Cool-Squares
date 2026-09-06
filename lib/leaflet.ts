@@ -1,3 +1,9 @@
+// Esri's light gray canvas tiles are free and keyless, unlike CARTO's basemaps
+// (basemaps.cartocdn.com now requires an account and watermarks unauthenticated tiles)
+export const LIGHT_BASE_TILES = "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}";
+export const LIGHT_LABELS_TILES = "https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/World_Light_Gray_Reference/MapServer/tile/{z}/{y}/{x}";
+export const LIGHT_TILES_ATTRIBUTION = "© Esri";
+
 /**
  * Loads Leaflet from the CDN exactly once and resolves with the global `L`
  * Shared by every map component so the script/stylesheet are never injected twice
