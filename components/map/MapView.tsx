@@ -9,7 +9,7 @@ import { ArrowLeft, LayoutGrid, Thermometer, X, Pencil, type LucideIcon } from "
 import type { GeoElement, SelectedArea } from "@/lib/types";
 import { encodeHashPayload, decodeHashPayload } from "@/lib/hash";
 import { loadSession, saveSession, clearSession } from "@/lib/session";
-import { loadLeaflet, LIGHT_BASE_TILES, LIGHT_LABELS_TILES, LIGHT_TILES_ATTRIBUTION } from "@/lib/leaflet";
+import { loadLeaflet, LIGHT_TILES, LIGHT_TILES_SUBDOMAINS, LIGHT_TILES_ATTRIBUTION } from "@/lib/leaflet";
 import { loadCzFeature } from "@/lib/czBorder";
 
 type Mode = "idle" | "drawing";
@@ -107,7 +107,7 @@ function MiniMap({ area }: { area: SelectedArea }) {
       });
       mapRef.current = map;
 
-      L.tileLayer(LIGHT_BASE_TILES, { maxZoom: 16, opacity: 0.6 }).addTo(map);
+      L.tileLayer(LIGHT_TILES, { subdomains: LIGHT_TILES_SUBDOMAINS, maxZoom: 19, opacity: 0.6 }).addTo(map);
 
       const world: [number, number][] = [[-90, -180], [-90, 180], [90, 180], [90, -180]];
       L.polygon([world, area.points], {
@@ -552,7 +552,6 @@ const MapView = forwardRef<{ startNewDrawing: () => void }, { onAreaSelected: (a
     const mapRef = useRef<HTMLDivElement>(null);
     const leafletMapRef = useRef<any>(null);
     const tileLayerRef = useRef<any>(null);
-    const labelsLayerRef = useRef<any>(null);
     const czMaskRef = useRef<any>(null);
     const [mapReady, setMapReady] = useState(false);
     const [mapStyle, setMapStyle] = useState<"light" | "satellite" | "heat">("light");
@@ -614,8 +613,7 @@ const MapView = forwardRef<{ startNewDrawing: () => void }, { onAreaSelected: (a
         heatPane.style.opacity = "0.85";
         map.createPane("maskPane").style.zIndex = "250";
 
-        tileLayerRef.current = L.tileLayer(LIGHT_BASE_TILES, { attribution: LIGHT_TILES_ATTRIBUTION, maxZoom: 19, maxNativeZoom: 16, pane: "czPane" }).addTo(map);
-        labelsLayerRef.current = L.tileLayer(LIGHT_LABELS_TILES, { maxZoom: 19, maxNativeZoom: 16, pane: "czPane" }).addTo(map);
+        tileLayerRef.current = L.tileLayer(LIGHT_TILES, { attribution: LIGHT_TILES_ATTRIBUTION, subdomains: LIGHT_TILES_SUBDOMAINS, maxZoom: 19, pane: "czPane" }).addTo(map);
 
         if (czFeature) {
           const czBounds = L.geoJSON(czFeature).getBounds();
@@ -690,8 +688,7 @@ const MapView = forwardRef<{ startNewDrawing: () => void }, { onAreaSelected: (a
       if (!tileLayer || !map || !L) return;
 
       if (mapStyle === "heat") {
-        tileLayer.setUrl(LIGHT_BASE_TILES);
-        labelsLayerRef.current?.setOpacity(1);
+        tileLayer.setUrl(LIGHT_TILES);
         czMask?.setStyle({ fillOpacity: 0.85 });
         if (heatLayersRef.current.length === 0) {
           addClimateLayersToMap(L, map, "heatPane").then(layers => {
@@ -702,8 +699,7 @@ const MapView = forwardRef<{ startNewDrawing: () => void }, { onAreaSelected: (a
         heatLayersRef.current.forEach(l => map.removeLayer(l));
         heatLayersRef.current = [];
         const isSatellite = mapStyle === "satellite";
-        tileLayer.setUrl(isSatellite ? SATELLITE_TILES : LIGHT_BASE_TILES);
-        labelsLayerRef.current?.setOpacity(isSatellite ? 0 : 1);
+        tileLayer.setUrl(isSatellite ? SATELLITE_TILES : LIGHT_TILES);
         czMask?.setStyle({ fillOpacity: isSatellite ? 0.72 : 0.85 });
       }
     }, [mapStyle]);

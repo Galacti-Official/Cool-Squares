@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { loadLeaflet, LIGHT_BASE_TILES, LIGHT_LABELS_TILES, LIGHT_TILES_ATTRIBUTION } from "@/lib/leaflet";
+import { loadLeaflet, LIGHT_TILES, LIGHT_TILES_SUBDOMAINS, LIGHT_TILES_ATTRIBUTION } from "@/lib/leaflet";
 import { loadCzFeature } from "@/lib/czBorder";
 
 interface ClimateArea {
@@ -348,14 +348,10 @@ export default function ClimateMap({
           mapRef.current.createPane("cityPane").style.zIndex = "375";
           mapRef.current.createPane("maskPane").style.zIndex = "500";
           L.control.zoom({ position: "bottomright" }).addTo(mapRef.current);
-          L.tileLayer(LIGHT_BASE_TILES, {
+          L.tileLayer(LIGHT_TILES, {
+            subdomains: LIGHT_TILES_SUBDOMAINS,
             maxZoom: 19,
-            maxNativeZoom: 16,
             attribution: `${LIGHT_TILES_ATTRIBUTION}, Open-Meteo`,
-          }).addTo(mapRef.current);
-          L.tileLayer(LIGHT_LABELS_TILES, {
-            maxZoom: 19,
-            maxNativeZoom: 16,
           }).addTo(mapRef.current);
         }
 
