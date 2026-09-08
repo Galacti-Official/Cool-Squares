@@ -275,7 +275,7 @@ function addLstTileStack(L: any, map: any, pane: string): any[] {
       maxNativeZoom: 7,
       maxZoom: 19,
       bounds,
-      attribution: daysAgo === LST_FRESHEST_DAYS ? "Povrchová teplota: NASA EOSDIS GIBS — MODIS/Aqua LST (odpolední)" : "",
+      attribution: daysAgo === LST_FRESHEST_DAYS ? `Povrchová teplota: NASA EOSDIS GIBS — MODIS/Aqua LST (odpolední), mozaika za posledních ${LST_STACK_DAYS} dní, ne jednotné datum` : "",
     }).addTo(map);
     layers.push(layer);
   }
@@ -556,11 +556,14 @@ export default function ClimateMap({
       </div>
       {stats && (
         <div style={{ marginTop: 10, display: "flex", flexWrap: "wrap", gap: 14 }}>
+          <div style={{ fontSize: 11, color: "#2e3a1f", width: "100%" }}>
+            Modelová teplota vzduchu ve 2 m (Open-Meteo), nikoli měření povrchu parcely:
+          </div>
           <div style={{ fontSize: 11, color: "#2e3a1f77" }}>Min: <span style={{ color: "#2e3a1f", fontStyle: "italic" }}>{stats.min.toFixed(1)} °C</span></div>
           <div style={{ fontSize: 11, color: "#2e3a1f77" }}>Průměr: <span style={{ color: "#2e3a1f", fontStyle: "italic" }}>{stats.avg.toFixed(1)} °C</span></div>
           <div style={{ fontSize: 11, color: "#2e3a1f77" }}>Max: <span style={{ color: "#2e3a1f", fontStyle: "italic" }}>{stats.max.toFixed(1)} °C</span></div>
           {stats.time && <div style={{ fontSize: 11, color: "#2e3a1f66" }}>Aktualizace: {stats.time.replace("T", " ")}</div>}
-          {citySource && <div style={{ fontSize: 11, color: "#2e3a1f66", width: "100%" }}>Detailní vrstva: {citySource}</div>}
+          {citySource && <div style={{ fontSize: 11, color: "#2e3a1f99", width: "100%" }}>Detailní vrstva (historický letecký snímek, ne aktuální stav): {citySource}</div>}
         </div>
       )}
     </div>

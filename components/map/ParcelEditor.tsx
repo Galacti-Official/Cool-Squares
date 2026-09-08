@@ -423,7 +423,7 @@ function ItemTooltip({ item }: { item: Item }) {
         <CostBadge cost={item.cost} />
         {item.waterFrequency && (
           <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 3, background: "#5B7FA022", color: "#5B7FA0", fontFamily: "inherit", letterSpacing: "0.04em" }}>
-            💧 {item.waterFrequency}
+            💧 {item.waterFrequency}*
           </span>
         )}
         <span style={{ fontSize: 9, padding: "2px 6px", borderRadius: 3, background: "#2e3a1f0a", color: "#2e3a1f66", fontFamily: "inherit", letterSpacing: "0.04em" }}>
@@ -434,8 +434,8 @@ function ItemTooltip({ item }: { item: Item }) {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 12px", marginBottom: 10 }}>
         {[
           { label: "Rozměry", value: item.dimensions },
-          { label: "Životnost", value: item.lifespan },
-          { label: "Chlazení", value: `−${item.coolingEffect} °C` },
+          { label: "Životnost rámu*", value: item.lifespan },
+          { label: "Chlazení*", value: `−${item.coolingEffect} °C` },
           { label: "Hmotnost", value: item.weight },
         ].map(({ label, value }) => (
           <div key={label}>
@@ -443,6 +443,9 @@ function ItemTooltip({ item }: { item: Item }) {
             <div style={{ fontSize: 11, color: "#2e3a1f" }}>{value}</div>
           </div>
         ))}
+      </div>
+      <div style={{ fontSize: 9, color: "#2e3a1faa", lineHeight: 1.5, marginBottom: 10 }}>
+        * Orientační odhad, dosud neověřený měřením na místě.
       </div>
 
       <div style={{ marginBottom: 10 }}>
@@ -600,9 +603,10 @@ function PropertiesPanel({ item, selectedCount, onChange, onCommit, onDelete }: 
         )}
         {itemData && (
           <div style={{ marginTop: 8, fontSize: 11, color: "#2e3a1f66", lineHeight: 1.5 }}>
-            <div>Chlazení: <span style={{ color: "#2a7d4f" }}>−{itemData.coolingEffect} °C</span></div>
-            <div>Životnost: {itemData.lifespan}</div>
-            {itemData.waterFrequency && <div style={{ color: "#5B7FA0" }}>💧 Zálivka: {itemData.waterFrequency}</div>}
+            <div>Chlazení*: <span style={{ color: "#2a7d4f" }}>−{itemData.coolingEffect} °C</span></div>
+            <div>Životnost rámu*: {itemData.lifespan}</div>
+            {itemData.waterFrequency && <div style={{ color: "#5B7FA0" }}>💧 Zálivka*: {itemData.waterFrequency}</div>}
+            <div style={{ fontSize: 9, color: "#2e3a1faa", marginTop: 4 }}>* Orientační odhad, dosud neověřený měřením na místě.</div>
           </div>
         )}
       </div>
@@ -644,6 +648,10 @@ function PlanSummaryBar({ stats, expanded, onToggle, area }: {
   const tempColor = tempDeltaColor(stats?.tempDelta);
   const tempLabel = tempDeltaLabel(stats?.tempDelta);
   const coverLabel = stats ? `${stats.coveragePct.toFixed(0)}% pokryto` : "0% pokryto";
+  const [everExpanded, setEverExpanded] = useState(false);
+  useEffect(() => {
+    if (expanded) setEverExpanded(true);
+  }, [expanded]);
 
   return (
     <div style={{ flexShrink: 0, borderTop: "1.5px solid #2e3a1f22", background: "#F4F5E0", transition: "all 0.22s ease" }}>
@@ -657,7 +665,7 @@ function PlanSummaryBar({ stats, expanded, onToggle, area }: {
         </div>
         <div style={{ width: 1, height: 20, background: "#2e3a1f22", margin: "0 20px" }} />
         <div style={{ display: "flex", alignItems: "baseline", gap: 6, minWidth: 160 }}>
-          <span style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "#2e3a1f77" }}>Přibližné Ochlazení</span>
+          <span style={{ fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "#2e3a1f77" }}>Přibližné Ochlazení*</span>
           <span style={{ fontSize: 14, color: tempColor, fontStyle: "italic" }}>{hasElements ? tempLabel : "—"}</span>
         </div>
         <div style={{ width: 1, height: 20, background: "#2e3a1f22", margin: "0 20px" }} />
@@ -675,8 +683,8 @@ function PlanSummaryBar({ stats, expanded, onToggle, area }: {
         </div>
       </div>
 
-      {expanded && (
-        <div style={{ borderTop: "1.5px solid #2e3a1f11", padding: "12px 20px 16px", display: "flex", gap: 32, flexWrap: "wrap" }}>
+      {everExpanded && (
+        <div style={{ borderTop: "1.5px solid #2e3a1f11", padding: "12px 20px 16px", display: expanded ? "flex" : "none", gap: 32, flexWrap: "wrap" }}>
           <div style={{ flex: 1, minWidth: 260 }}>
             <div style={{ fontSize: 9, letterSpacing: "0.12em", textTransform: "uppercase", color: "#2e3a1f66", marginBottom: 8 }}>Rozpis nákladů</div>
             {!hasElements
@@ -713,6 +721,9 @@ function PlanSummaryBar({ stats, expanded, onToggle, area }: {
                   </div>
                   <div style={{ fontSize: 11, color: "#2e3a1f77", lineHeight: 1.55 }}>
                     Odhad vychází z kombinace stínění, evapotranspirace rostlin a odpařování vodních prvků.
+                  </div>
+                  <div style={{ fontSize: 10, color: "#2e3a1faa", lineHeight: 1.5, marginTop: 6 }}>
+                    * Orientační plánovací výpočet, ne fyzikální předpověď ani měření. Nezahrnuje veličinu, vzdálenost ani počasí a nevychází z ověřené metodiky.
                   </div>
                 </>
               )}
@@ -2191,9 +2202,12 @@ export default function ParcelEditor({ areas, onBack, initialPlans }: { areas: S
                   <div style={{ fontSize: 14, fontStyle: "italic", color: "#2e3a1f" }}>{planStats ? `${formatCZK(planStats.totalMin)} – ${formatCZK(planStats.totalMax)}` : "—"}</div>
                 </div>
                 <div style={{ width: 110, flexShrink: 0, padding: "12px 14px", borderRadius: 10, background: "#2e3a1f08", border: "1.5px solid #2e3a1f12" }}>
-                  <div style={{ fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", color: "#2e3a1f66", marginBottom: 4 }}>Přibližné ochlazení</div>
+                  <div style={{ fontSize: 9, letterSpacing: "0.1em", textTransform: "uppercase", color: "#2e3a1f66", marginBottom: 4 }}>Přibližné ochlazení*</div>
                   <div style={{ fontSize: 14, fontStyle: "italic", color: tempColor }}>{tempLabel}</div>
                 </div>
+              </div>
+              <div style={{ fontSize: 10, color: "#2e3a1faa", lineHeight: 1.5, marginBottom: 16, marginTop: -8 }}>
+                * Orientační plánovací výpočet, ne fyzikální předpověď ani měření na místě.
               </div>
 
               <div style={{ marginBottom: 16 }}>

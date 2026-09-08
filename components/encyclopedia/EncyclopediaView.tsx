@@ -222,7 +222,7 @@ function CoolingBar({ value }: { value: number }) {
         />
       </div>
       <span className="text-xs font-semibold text-btn-dark tabular-nums w-12 text-right">
-        −{value}°C
+        −{value}°C*
       </span>
     </div>
   );
@@ -258,7 +258,7 @@ function ItemCard({ item, onClick }: { item: Item; onClick: () => void }) {
           Údržba: {MAINT_LABEL[item.maintenance]}
         </span>
         <span className={`${BADGE} bg-fg text-text-mid`}>
-          Zálivka: {item.waterFrequency ?? "Bez potřeby"}
+          Zálivka*: {item.waterFrequency ?? "Bez potřeby"}
         </span>
         {item.tags.includes("nemodulární") && (
           <span className={`${BADGE} bg-red-100 text-red-700 font-bold flex items-center gap-1`}>
@@ -333,8 +333,8 @@ function DetailPanel({ item, onClose }: { item: Item; onClose: () => void }) {
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             {[
-              { label: "Chladicí efekt", value: `−${item.coolingEffect}°C` },
-              { label: "Životnost", value: item.lifespan },
+              { label: "Chladicí efekt*", value: `−${item.coolingEffect}°C` },
+              { label: "Životnost rámu*", value: item.lifespan },
               { label: "Cena", value: priceLabel },
               { label: "Údržba", value: MAINT_LABEL[item.maintenance] },
             ].map(({ label, value }) => (
@@ -350,12 +350,16 @@ function DetailPanel({ item, onClose }: { item: Item; onClose: () => void }) {
             <CoolingBar value={item.coolingEffect} />
           </div>
 
+          <p className="text-xs text-text-mid leading-relaxed">
+            * Orientační odhad výrobce, dosud neověřený měřením na místě. Neuvádí veličinu (povrch/vzduch/komfort), vzdálenost ani podmínky. Životnost rámu je návrhový cíl při určené údržbě, ne záruka; výměna dílů a obnova vegetace mají vlastní cyklus.
+          </p>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {[
               { label: "Materiál", value: item.material },
               { label: "Hmotnost", value: item.weight },
               { label: "Rozměry", value: item.dimensions },
-              { label: "Zálivka", value: item.waterFrequency ?? "Bez potřeby" },
+              { label: "Zálivka*", value: item.waterFrequency ?? "Bez potřeby" },
             ].map(({ label, value }) => (
               <div key={label} className="flex justify-between items-start py-2.5 px-3 rounded-xl bg-fg/60 border border-btn/15">
                 <span className="text-xs text-text-light">{label}</span>
