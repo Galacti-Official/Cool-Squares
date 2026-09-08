@@ -260,7 +260,7 @@ function lstDate(daysAgo: number): string {
 }
 
 const LST_FRESHEST_DAYS = 2;
-const LST_STACK_DAYS = 8;
+export const LST_STACK_DAYS = 8;
 
 export const LST_DATE = lstDate(LST_FRESHEST_DAYS);
 

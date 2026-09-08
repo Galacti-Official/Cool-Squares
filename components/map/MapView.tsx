@@ -3,7 +3,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from "react";
 import ParcelEditor from "./ParcelEditor";
 import { formatAreaByMagnitude, formatDistanceByMagnitude } from "./areaFormat";
-import ClimateMap, { addClimateLayersToMap, LST_DATE } from "./ClimateMap";
+import ClimateMap, { addClimateLayersToMap, LST_DATE, LST_STACK_DAYS } from "./ClimateMap";
 import Image from "next/image";
 import { ArrowLeft, LayoutGrid, Thermometer, X, Pencil, type LucideIcon } from "lucide-react";
 import type { GeoElement, SelectedArea } from "@/lib/types";
@@ -823,8 +823,8 @@ const MapView = forwardRef<{ startNewDrawing: () => void }, { onAreaSelected: (a
               <span style={{ position: "absolute", left: "48.8%", transform: "translateX(-50%)" }}>0</span>
               <span style={{ position: "absolute", right: 0 }}>+77 °C</span>
             </div>
-            <div className="text-[9px] text-text-light mt-1">Satelit MODIS/Aqua (odpoledne) · {LST_DATE}</div>
-            <div className="text-[9px] text-text-light">Brno: detailní mapa (CzechGlobe, vlastní škála)</div>
+            <div className="text-[9px] text-text-mid mt-1">Satelit MODIS/Aqua (odpoledne) · mozaika za posledních {LST_STACK_DAYS} dní do {LST_DATE}, ne jednotné datum</div>
+            <div className="text-[9px] text-text-mid">Brno: letecký snímek 2024 (CzechGlobe, vlastní škála) — historický, ne aktuální stav</div>
           </div>
         )}
 
